@@ -15,14 +15,13 @@ from dbus_fast.aio import MessageBus
 from dbus_fast.service import ServiceInterface, method, signal
 from dbus_fast import BusType, Variant
 
-from common.utils import store_print
+from common.utils import store_print, download_file
 from android_store.database import (
     init_database, save_packages_to_db, ensure_populated,
     search_packages, get_package_by_id
 )
 from android_store.api import (
     download_index, process_indexes, read_repo_list,
-    download_file
 )
 from android_store.andromeda import (
     ping_session_manager, install_app, remove_app,
