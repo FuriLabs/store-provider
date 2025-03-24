@@ -5,36 +5,7 @@
 import os
 import aiofiles
 import msgspec
-from common.utils import store_print
-
-async def download_file(session, url, file_path, verbose=False):
-    """Download a file from a URL to a file path"""
-    try:
-        downloaded = 0
-        previous_progress = 0
-        async with session.get(url) as response:
-            if response.status == 200:
-                download_size = response.headers.get('Content-Length', 0)
-                with open(file_path, 'wb') as f:
-                    async for chunk in response.content.iter_chunked(8192):
-                        f.write(chunk)
-
-                        if download_size:
-                            downloaded += len(chunk)
-                            progress = int((downloaded / int(download_size)) * 100)
-
-                            if progress != previous_progress:
-                                store_print(f"Downloading {url}: {progress}%", verbose)
-                                previous_progress = progress
-                return True
-            else:
-                store_print(f"Download failed with status {response.status}: {url}", verbose)
-                return False
-    except Exception as e:
-        store_print(f"Error downloading {url}: {e}", verbose)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        return False
+from common.utils import store_print, download_file
 
 async def download_index(session, repo_url, repo_name, cache_dir, verbose=False):
     """Download repository index"""

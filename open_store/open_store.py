@@ -16,7 +16,7 @@ from dbus_fast.aio import MessageBus
 from dbus_fast.service import ServiceInterface, method, signal
 from dbus_fast import BusType, Variant
 
-from common.utils import store_print
+from common.utils import store_print, download_file
 from open_store.database import (
     init_app_database, init_installed_database, save_app_list,
     search_apps, save_installed_app, remove_installed_app,
@@ -25,7 +25,7 @@ from open_store.database import (
 from open_store.api import fetch_app_list, get_app_details
 from open_store.click import (
     extract_click_package, get_system_architecture,
-    find_compatible_download, download_file,
+    find_compatible_download,
     process_desktop_files, cleanup_desktop_files
 )
 
