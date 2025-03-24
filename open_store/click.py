@@ -143,7 +143,7 @@ async def process_desktop_files(app_id, app_dir, verbose=False):
     For each desktop file found:
     1. Read and parse the content
     2. Create a wrapper script to set up environment variables
-    3. Create a modified version with absolute paths in ~/.local/open-store/applications/
+    3. Create a modified version with absolute paths in ~/.local/store-provider/open-store/applications/
     4. Create a symlink to ~/.local/share/applications/
 
     Args:
@@ -156,9 +156,9 @@ async def process_desktop_files(app_id, app_dir, verbose=False):
     """
     results = []
 
-    store_apps_dir = os.path.expanduser("~/.local/open-store/applications")
+    store_apps_dir = os.path.expanduser("~/.local/store-provider/open-store/applications")
     system_apps_dir = os.path.expanduser("~/.local/share/applications")
-    scripts_dir = os.path.expanduser("~/.local/open-store/scripts")
+    scripts_dir = os.path.expanduser("~/.local/store-provider/open-store/scripts")
 
     os.makedirs(store_apps_dir, exist_ok=True)
     os.makedirs(system_apps_dir, exist_ok=True)
@@ -258,9 +258,9 @@ async def cleanup_desktop_files(app_id, verbose=False):
     """
 
     try:
-        store_apps_dir = os.path.expanduser("~/.local/open-store/applications")
+        store_apps_dir = os.path.expanduser("~/.local/store-provider/open-store/applications")
         system_apps_dir = os.path.expanduser("~/.local/share/applications")
-        scripts_dir = os.path.expanduser("~/.local/open-store/scripts")
+        scripts_dir = os.path.expanduser("~/.local/store-provider/open-store/scripts")
 
         pattern = f"{app_id}_*.desktop"
         script_pattern = f"{app_id}_*.sh"
