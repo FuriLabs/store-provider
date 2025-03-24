@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 
-from argparse import ArgumentParser
 from pathlib import Path
 from time import time
 import tempfile
