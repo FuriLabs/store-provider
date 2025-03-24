@@ -4,6 +4,7 @@
 
 from dbus_fast.aio import MessageBus
 from dbus_fast import BusType, Variant
+
 from common.utils import store_print
 
 async def ping_session_manager(verbose=False):

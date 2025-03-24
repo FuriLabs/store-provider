@@ -2,9 +2,10 @@
 # Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 # Copyright (C) 2025 Luis Garcia <git@luigi311.com>
 
-import os
 import aiofiles
 import msgspec
+import os
+
 from common.utils import store_print, download_file
 
 async def download_index(session, repo_url, repo_name, cache_dir, verbose=False):

@@ -2,13 +2,10 @@
 # Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 # Copyright (C) 2025 Luis Garcia <git@luigi311.com>
 
-from argparse import ArgumentParser
 import asyncio
 import aiohttp
-import functools
-import json
 import msgspec
-import sys
+import json
 import os
 
 from dbus_fast.aio import MessageBus

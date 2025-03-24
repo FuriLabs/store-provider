@@ -2,11 +2,12 @@
 # Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 # Copyright (C) 2025 Luis Garcia <git@luigi311.com>
 
-import os
-import json
 import aiosqlite
 import aiofiles
 import msgspec
+import json
+import os
+
 from common.utils import store_print
 
 async def init_database(database_path, verbose=False):
