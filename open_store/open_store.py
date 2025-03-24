@@ -29,11 +29,11 @@ from open_store.click import (
     process_desktop_files, cleanup_desktop_files
 )
 
-DATABASE = os.path.expanduser("~/.cache/openstore/openstore.db")
-INSTALLED_DB = os.path.expanduser("~/.local/open-store/apps.db")
-CACHE_DIR = os.path.expanduser("~/.cache/openstore/repo")
-DOWNLOAD_DIR = os.path.expanduser("~/.local/open-store")
-APPS_DIR = os.path.expanduser("~/.local/open-store")
+DATABASE = os.path.expanduser("~/.cache/store-provider/open-store/open-store.db")
+CACHE_DIR = os.path.expanduser("~/.cache/store-provider/open-store/repo")
+DOWNLOAD_DIR = os.path.expanduser("~/.cache/store-provider/open-store/downloads")
+INSTALLED_DB = os.path.expanduser("~/.local/store-provider/open-store/apps.db")
+APPS_DIR = os.path.expanduser("~/.local/store-provider/open-store")
 IDLE_TIMEOUT = 120
 OPENSTORE_API_URL = "https://open-store.io/api/v4/apps"
 

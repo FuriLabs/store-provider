@@ -30,9 +30,9 @@ from android_store.andromeda import (
 
 DEFAULT_REPO_CONFIG_DIR = "/usr/lib/android-store/repos"
 CUSTOM_REPO_CONFIG_DIR = "/etc/android-store/repos"
-DATABASE = os.path.expanduser("~/.cache/android-store/android-store.db")
-CACHE_DIR = os.path.expanduser("~/.cache/android-store/repo")
-DOWNLOAD_CACHE_DIR = os.path.expanduser("~/.cache/android-store/downloads")
+DATABASE = os.path.expanduser("~/.cache/store-provider/android-store/android-store.db")
+CACHE_DIR = os.path.expanduser("~/.cache/store-provider/android-store/repo")
+DOWNLOAD_CACHE_DIR = os.path.expanduser("~/.cache/store-provider/android-store/downloads")
 IDLE_TIMEOUT = 120
 
 class FDroidInterface(ServiceInterface):
