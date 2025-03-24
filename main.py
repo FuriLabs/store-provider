@@ -7,15 +7,21 @@ import asyncio
 import sys
 import signal
 from argparse import ArgumentParser
+from loguru import logger
 
 from android_store.android_store import AndroidStoreService
 from open_store.open_store import OpenStoreService
-from common.utils import store_print
+
+def configure_logger(args) -> None:
+    # Remove default logger to configure our own
+    logger.remove()
+
+    if args.verbose:
+        logger.add(sys.stdout)
 
 class StoreManager:
-    def __init__(self, verbose=False):
-        store_print("Initializing Store Manager", verbose)
-        self.verbose = verbose
+    def __init__(self):
+        logger.info("Initializing Store Manager")
         self.android_store = None
         self.open_store = None
         self.shutdown_event = asyncio.Event()
@@ -32,15 +38,15 @@ class StoreManager:
         """Count down to service shutdown due to inactivity"""
         try:
             await asyncio.sleep(self.idle_timeout)
-            store_print(f"Services idle for {self.idle_timeout} seconds, shutting down", self.verbose)
+            logger.info(f"Services idle for {self.idle_timeout} seconds, shutting down")
             self.shutdown_event.set()
         except asyncio.CancelledError:
             pass
 
     async def setup(self):
         try:
-            self.android_store = AndroidStoreService(verbose=self.verbose, idle_callback=self.reset_idle_timer)
-            self.open_store = OpenStoreService(verbose=self.verbose, idle_callback=self.reset_idle_timer)
+            self.android_store = AndroidStoreService(idle_callback=self.reset_idle_timer)
+            self.open_store = OpenStoreService(idle_callback=self.reset_idle_timer)
 
             await self.reset_idle_timer()
 
@@ -66,19 +72,19 @@ class StoreManager:
                     task.cancel()
 
                 if shutdown_task in done:
-                    store_print("Shutting down due to inactivity", self.verbose)
+                    logger.info("Shutting down due to inactivity")
                 elif android_disconnect in done:
-                    store_print("Android Store bus disconnected", self.verbose)
+                    logger.info("Android Store bus disconnected")
                 elif openstore_disconnect in done:
-                    store_print("OpenStore bus disconnected", self.verbose)
+                    logger.info("OpenStore bus disconnected")
             except asyncio.CancelledError:
-                store_print("Setup cancelled, cleaning up", self.verbose)
+                logger.error("Setup cancelled, cleaning up")
                 for task in all_tasks:
                     if not task.done():
                         task.cancel()
                 raise
         except asyncio.CancelledError:
-            store_print("Setup cancelled, shutting down", self.verbose)
+            logger.error("Setup cancelled, shutting down")
             raise
         finally:
             if self.android_store:
@@ -96,18 +102,19 @@ async def main():
     parser = ArgumentParser(description="Run the Store Provider services", add_help=False)
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose output.')
     args = parser.parse_args()
+    configure_logger(args)
 
     loop = asyncio.get_running_loop()
 
     stop_event = asyncio.Event()
 
     def handle_sigint():
-        store_print("Received SIGINT, shutting down...", args.verbose)
+        logger.info("Received SIGINT, shutting down...")
         stop_event.set()
 
     loop.add_signal_handler(signal.SIGINT, handle_sigint)
 
-    manager = StoreManager(verbose=args.verbose)
+    manager = StoreManager()
 
     setup_task = asyncio.create_task(manager.setup())
     stop_task = asyncio.create_task(stop_event.wait())
@@ -126,8 +133,8 @@ async def main():
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            store_print(f"Error in task: {e}", args.verbose)
-    store_print("Main loop exited, goodbye!", args.verbose)
+            logger.error(f"Error in task: {e}")
+    logger.info("Main loop exited, goodbye!")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -4,10 +4,9 @@
 
 from dbus_fast.aio import MessageBus
 from dbus_fast import BusType, Variant
+from loguru import logger
 
-from common.utils import store_print
-
-async def ping_session_manager(verbose=False):
+async def ping_session_manager():
     """Check if the container session manager is running"""
     bus = None
     try:
@@ -23,10 +22,10 @@ async def ping_session_manager(verbose=False):
 
         return True
     except Exception as e:
-        store_print(f"Container session manager is not started: {e}", verbose)
+        logger.error(f"Container session manager is not started: {e}")
         return False
 
-async def install_app(package_path, verbose=False):
+async def install_app(package_path):
     """Install an app in the container"""
     try:
         bus = await MessageBus(bus_type=BusType.SESSION).connect()
@@ -38,13 +37,13 @@ async def install_app(package_path, verbose=False):
         await interface.call_install_app(package_path)
 
         bus.disconnect()
-        store_print(f"Successfully installed {package_path}", verbose)
+        logger.success(f"Successfully installed {package_path}")
         return True
     except Exception as e:
-        store_print(f"Error installing app: {e}", verbose)
+        logger.error(f"Error installing app: {e}")
         return False
 
-async def remove_app(package_name, verbose=False):
+async def remove_app(package_name):
     """Remove an app from the container"""
     try:
         bus = await MessageBus(bus_type=BusType.SESSION).connect()
@@ -56,13 +55,13 @@ async def remove_app(package_name, verbose=False):
         await interface.call_remove_app(package_name)
 
         bus.disconnect()
-        store_print(f"Successfully removed {package_name}", verbose)
+        logger.success(f"Successfully removed {package_name}")
         return True
     except Exception as e:
-        store_print(f"Error removing app: {e}", verbose)
+        logger.error(f"Error removing app: {e}")
         return False
 
-async def get_apps_info(verbose=False):
+async def get_apps_info():
     """Get information about installed apps"""
     try:
         bus = await MessageBus(bus_type=BusType.SESSION).connect()
@@ -86,16 +85,16 @@ async def get_apps_info(verbose=False):
         bus.disconnect()
         return result
     except Exception as e:
-        store_print(f"Error getting apps info: {e}", verbose)
+        logger.error(f"Error getting apps info: {e}")
         return []
 
-async def compare_installed_with_repo(db, json_decoder, verbose=False):
+async def compare_installed_with_repo(db, json_decoder):
     """Compare installed apps with repository versions to find upgradable apps"""
     upgradable = []
-    installed_apps = await get_apps_info(verbose)
+    installed_apps = await get_apps_info()
 
     if not installed_apps:
-        store_print("No installed apps found", verbose)
+        logger.warning("No installed apps found")
         return upgradable
 
     for app in installed_apps:

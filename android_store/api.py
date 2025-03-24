@@ -5,10 +5,11 @@
 import aiofiles
 import msgspec
 import os
+from loguru import logger
 
-from common.utils import store_print, download_file
+from common.utils import download_file
 
-async def download_index(session, repo_url, repo_name, cache_dir, verbose=False):
+async def download_index(session, repo_url, repo_name, cache_dir):
     """Download repository index"""
     repo_cache_dir = os.path.join(cache_dir, repo_name)
     os.makedirs(repo_cache_dir, exist_ok=True)
@@ -19,7 +20,7 @@ async def download_index(session, repo_url, repo_name, cache_dir, verbose=False)
     url_path = os.path.join(repo_cache_dir, 'repo_url.txt')
 
     try:
-        result = await download_file(session, index_url, index_path, verbose)
+        result = await download_file(session, index_url, index_path)
 
         if not result:
             return False
@@ -29,7 +30,7 @@ async def download_index(session, repo_url, repo_name, cache_dir, verbose=False)
 
         return True
     except Exception as e:
-        store_print(f"Error downloading index for {repo_url}: {e}", verbose)
+        logger.error(f"Error downloading index for {repo_url}: {e}")
         return False
 
 def get_localized_text(text_obj, lang='en-US'):
@@ -78,7 +79,7 @@ def get_package_info(package_id, metadata, version_info, repository_url):
         'hash_type': 'sha256'
     }
 
-async def process_indexes(cache_dir, json_enc, verbose=False):
+async def process_indexes(cache_dir, json_enc):
     """Process repository indexes and extract package information"""
     rows = []
 
@@ -98,7 +99,7 @@ async def process_indexes(cache_dir, json_enc, verbose=False):
             async with aiofiles.open(url_path, 'r') as f:
                 repository_url = await f.read()
         except Exception as e:
-            store_print(f"Error processing {index_path}: {e}", verbose)
+            logger.error(f"Error processing {index_path}: {e}")
             continue
 
         for package_id, package_data in index_data.get("packages", {}).items():

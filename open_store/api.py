@@ -3,18 +3,16 @@
 
 import aiohttp
 import json
-
-from common.utils import store_print
+from loguru import logger
 
 OPENSTORE_API_URL = "https://open-store.io/api/v4/apps"
 
-async def fetch_app_list(session, verbose=False):
+async def fetch_app_list(session):
     """
     Fetch the list of apps from the OpenStore API.
 
     Args:
         session: aiohttp ClientSession
-        verbose: Whether to print verbose logs
 
     Returns:
         List of apps
@@ -25,10 +23,10 @@ async def fetch_app_list(session, verbose=False):
 
     while next_url:
         try:
-            store_print(f"Fetching page {page_count + 1} from {next_url}", verbose)
+            logger.info(f"Fetching page {page_count + 1} from {next_url}")
             async with session.get(next_url) as response:
                 if response.status != 200:
-                    store_print(f"Error fetching apps: HTTP {response.status}", verbose)
+                    logger.error(f"Error fetching apps: HTTP {response.status}")
                     break
 
                 data = await response.json()
@@ -48,20 +46,19 @@ async def fetch_app_list(session, verbose=False):
 
                 next_url = data.get('data', {}).get('next')
         except Exception as e:
-            store_print(f"Error fetching apps: {e}", verbose)
+            logger.error(f"Error fetching apps: {e}")
             break
 
-    store_print(f"Fetched {len(apps)} apps in {page_count} pages", verbose)
+    logger.info(f"Fetched {len(apps)} apps in {page_count} pages")
     return apps
 
-async def get_app_details(session, app_id, verbose=False):
+async def get_app_details(session, app_id):
     """
     Get detailed information about an app.
 
     Args:
         session: aiohttp ClientSession
         app_id: App ID
-        verbose: Whether to print verbose logs
 
     Returns:
         App details or None if not found
@@ -69,18 +66,18 @@ async def get_app_details(session, app_id, verbose=False):
     url = f"{OPENSTORE_API_URL}/{app_id}"
 
     try:
-        store_print(f"Fetching app details for {app_id}", verbose)
+        logger.info(f"Fetching app details for {app_id}")
         async with session.get(url) as response:
             if response.status != 200:
-                store_print(f"Error fetching app details: HTTP {response.status}", verbose)
+                logger.error(f"Error fetching app details: HTTP {response.status}")
                 return None
 
             data = await response.json()
             if not data.get('success'):
-                store_print(f"API returned error: {data.get('message')}", verbose)
+                logger.error(f"API returned error: {data.get('message')}")
                 return None
 
             return data.get('data')
     except Exception as e:
-        store_print(f"Error fetching app details: {e}", verbose)
+        logger.error(f"Error fetching app details: {e}")
         return None

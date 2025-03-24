@@ -11,17 +11,15 @@ import shlex
 import glob
 import stat
 import os
+from loguru import logger
 
-from common.utils import store_print
-
-async def extract_click_package(click_path, target_dir, verbose=False):
+async def extract_click_package(click_path, target_dir):
     """
     Extract a click package to the target directory.
 
     Args:
         click_path: Path to the .click file
         target_dir: Directory to extract contents to
-        verbose: Whether to print verbose logs
 
     Returns:
         Path to the extracted directory or None if extraction failed
@@ -30,7 +28,7 @@ async def extract_click_package(click_path, target_dir, verbose=False):
 
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
-            store_print(f"Extracting click package: {click_path}", verbose)
+            logger.info(f"Extracting click package: {click_path}")
             subprocess.run(['ar', 'x', click_path], cwd=temp_dir, check=True)
 
             data_tar_path = os.path.join(temp_dir, 'data.tar.gz')
@@ -45,18 +43,18 @@ async def extract_click_package(click_path, target_dir, verbose=False):
                         try:
                             os.remove(file_path)
                         except Exception as e:
-                            store_print(f"Error removing {file_path}: {e}", verbose)
+                            logger.error(f"Error removing {file_path}: {e}")
 
-                store_print(f"Extracted to {target_dir}", verbose)
+                logger.info(f"Extracted to {target_dir}")
                 return target_dir
             else:
-                store_print(f"data.tar.gz not found in {click_path}", verbose)
+                logger.warning(f"data.tar.gz not found in {click_path}")
                 return None
         except subprocess.CalledProcessError as e:
-            store_print(f"Error extracting click package: {e}", verbose)
+            logger.error(f"Error extracting click package: {e}")
             return None
         except tarfile.TarError as e:
-            store_print(f"Error extracting data tarball: {e}", verbose)
+            logger.error(f"Error extracting data tarball: {e}")
             return None
 
 def get_system_architecture():
@@ -97,7 +95,7 @@ def find_compatible_download(downloads, system_arch, prefer_focal=True):
 
     return None
 
-async def download_file(session, url, output_path, verbose=False):
+async def download_file(session, url, output_path):
     """
     Download a file from a URL to the specified path.
 
@@ -105,7 +103,6 @@ async def download_file(session, url, output_path, verbose=False):
         session: aiohttp ClientSession
         url: URL to download from
         output_path: Path to save the file
-        verbose: Whether to print verbose logs
 
     Returns:
         True if download was successful, False otherwise
@@ -113,7 +110,7 @@ async def download_file(session, url, output_path, verbose=False):
     try:
         async with session.get(url) as response:
             if response.status != 200:
-                store_print(f"Error downloading file: HTTP {response.status}", verbose)
+                logger.error(f"Error downloading file: HTTP {response.status}")
                 return False
 
             # Download the file
@@ -127,16 +124,16 @@ async def download_file(session, url, output_path, verbose=False):
                     downloaded += len(chunk)
                     if total > 0:
                         progress = int(downloaded * 100 / total)
-                        store_print(f"Download progress: {progress}%", verbose)
+                        logger.info(f"Download progress: {progress}%")
 
             return True
     except Exception as e:
-        store_print(f"Error downloading file: {e}", verbose)
+        logger.error(f"Error downloading file: {e}")
         if os.path.exists(output_path):
             os.remove(output_path)
         return False
 
-async def process_desktop_files(app_id, app_dir, verbose=False):
+async def process_desktop_files(app_id, app_dir):
     """
     Process desktop files in the extracted click package.
 
@@ -149,7 +146,6 @@ async def process_desktop_files(app_id, app_dir, verbose=False):
     Args:
         app_id: App ID
         app_dir: Path to the extracted app directory
-        verbose: Whether to print verbose logs
 
     Returns:
         List of created desktop files and symlinks
@@ -167,7 +163,7 @@ async def process_desktop_files(app_id, app_dir, verbose=False):
     desktop_files = glob.glob(os.path.join(app_dir, "**/*.desktop"), recursive=True)
 
     if not desktop_files:
-        store_print(f"No desktop files found for {app_id}", verbose)
+        logger.warning(f"No desktop files found for {app_id}")
         return results
 
     for desktop_file in desktop_files:
@@ -189,7 +185,7 @@ async def process_desktop_files(app_id, app_dir, verbose=False):
                         desktop_content[current_section][key.strip()] = value.strip()
 
             if 'Desktop Entry' not in desktop_content:
-                store_print(f"Invalid desktop file (no Desktop Entry section): {desktop_file}", verbose)
+                logger.warning(f"Invalid desktop file (no Desktop Entry section): {desktop_file}")
                 continue
 
             desktop_filename = os.path.basename(desktop_file)
@@ -234,7 +230,7 @@ async def process_desktop_files(app_id, app_dir, verbose=False):
                 os.remove(system_desktop_path)
             os.symlink(store_desktop_path, system_desktop_path)
 
-            store_print(f"Created wrapper script and desktop file for {name}", verbose)
+            logger.info(f"Created wrapper script and desktop file for {name}")
             results.append({
                 'name': name,
                 'script_path': script_path,
@@ -242,16 +238,15 @@ async def process_desktop_files(app_id, app_dir, verbose=False):
                 'system_desktop_path': system_desktop_path
             })
         except Exception as e:
-            store_print(f"Error processing desktop file {desktop_file}: {e}", verbose)
+            logger.error(f"Error processing desktop file {desktop_file}: {e}")
     return results
 
-async def cleanup_desktop_files(app_id, verbose=False):
+async def cleanup_desktop_files(app_id):
     """
     Clean up desktop files and symlinks for an app.
 
     Args:
         app_id: App ID
-        verbose: Whether to print verbose logs
 
     Returns:
         True if successful, False otherwise
@@ -272,17 +267,17 @@ async def cleanup_desktop_files(app_id, verbose=False):
         for desktop_file in system_desktop_files:
             if os.path.islink(desktop_file):
                 os.remove(desktop_file)
-                store_print(f"Removed desktop file symlink: {desktop_file}", verbose)
+                logger.info(f"Removed desktop file symlink: {desktop_file}")
 
         for desktop_file in store_desktop_files:
             os.remove(desktop_file)
-            store_print(f"Removed desktop file: {desktop_file}", verbose)
+            logger.info(f"Removed desktop file: {desktop_file}")
 
         for script_file in script_files:
             os.remove(script_file)
-            store_print(f"Removed wrapper script: {script_file}", verbose)
+            logger.info(f"Removed wrapper script: {script_file}")
 
         return True
     except Exception as e:
-        store_print(f"Error cleaning up desktop files for {app_id}: {e}", verbose)
+        logger.error(f"Error cleaning up desktop files for {app_id}: {e}")
         return False
