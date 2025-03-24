@@ -4,16 +4,14 @@
 import aiosqlite
 import json
 import os
+from loguru import logger
 
-from common.utils import store_print
-
-async def init_app_database(db_path, verbose=False):
+async def init_app_database(db_path):
     """
     Initialize the app database.
 
     Args:
         db_path: Path to the database file
-        verbose: Whether to print verbose logs
 
     Returns:
         Database connection
@@ -50,17 +48,16 @@ async def init_app_database(db_path, verbose=False):
     """)
 
     await db.commit()
-    store_print("App database initialized", verbose)
+    logger.info("App database initialized")
 
     return db
 
-async def init_installed_database(db_path, verbose=False):
+async def init_installed_database(db_path):
     """
     Initialize the installed apps database.
 
     Args:
         db_path: Path to the database file
-        verbose: Whether to print verbose logs
 
     Returns:
         Database connection
@@ -83,18 +80,17 @@ async def init_installed_database(db_path, verbose=False):
     """)
 
     await db.commit()
-    store_print("Installed apps database initialized", verbose)
+    logger.info("Installed apps database initialized")
 
     return db
 
-async def save_app_list(db, apps, verbose=False):
+async def save_app_list(db, apps):
     """
     Save a list of apps to the database.
 
     Args:
         db: Database connection
         apps: List of app dictionaries
-        verbose: Whether to print verbose logs
 
     Returns:
         True if successful, False otherwise
@@ -132,20 +128,19 @@ async def save_app_list(db, apps, verbose=False):
 
             await db.commit()
 
-        store_print(f"Saved {len(apps)} apps to database", verbose)
+        logger.info(f"Saved {len(apps)} apps to database")
         return True
     except Exception as e:
-        store_print(f"Error saving apps to database: {e}", verbose)
+        logger.error(f"Error saving apps to database: {e}")
         return False
 
-async def search_apps(db, query, verbose=False):
+async def search_apps(db, query):
     """
     Search for apps in the database.
 
     Args:
         db: Database connection
         query: Search query
-        verbose: Whether to print verbose logs
 
     Returns:
         List of matching apps
@@ -182,14 +177,14 @@ async def search_apps(db, query, verbose=False):
                 }
                 results.append(app_info)
 
-        store_print(f"Found {len(results)} apps matching '{query}'", verbose)
+        logger.info(f"Found {len(results)} apps matching '{query}'")
         return results
     except Exception as e:
-        store_print(f"Error searching apps: {e}", verbose)
+        logger.error(f"Error searching apps: {e}")
         return []
 
 async def save_installed_app(db, app_id, name, version, channel, architecture,
-                             install_date, app_dir, verbose=False):
+                             install_date, app_dir):
     """
     Save installed app information to the database.
 
@@ -202,7 +197,6 @@ async def save_installed_app(db, app_id, name, version, channel, architecture,
         architecture: App architecture
         install_date: Installation date
         app_dir: Path to the extracted app directory
-        verbose: Whether to print verbose logs
 
     Returns:
         True if successful, False otherwise
@@ -223,20 +217,19 @@ async def save_installed_app(db, app_id, name, version, channel, architecture,
         ))
         await db.commit()
 
-        store_print(f"Saved installed app {app_id} to database", verbose)
+        logger.info(f"Saved installed app {app_id} to database")
         return True
     except Exception as e:
-        store_print(f"Error saving installed app: {e}", verbose)
+        logger.error(f"Error saving installed app: {e}")
         return False
 
-async def remove_installed_app(db, app_id, verbose=False):
+async def remove_installed_app(db, app_id):
     """
     Remove an installed app from the database.
 
     Args:
         db: Database connection
         app_id: App ID
-        verbose: Whether to print verbose logs
 
     Returns:
         True if successful, False otherwise
@@ -245,19 +238,18 @@ async def remove_installed_app(db, app_id, verbose=False):
         await db.execute("DELETE FROM installed_apps WHERE id = ?", (app_id,))
         await db.commit()
 
-        store_print(f"Removed app {app_id} from database", verbose)
+        logger.info(f"Removed app {app_id} from database")
         return True
     except Exception as e:
-        store_print(f"Error removing app from database: {e}", verbose)
+        logger.error(f"Error removing app from database: {e}")
         return False
 
-async def get_installed_apps(db, verbose=False):
+async def get_installed_apps(db):
     """
     Get list of installed apps from the database.
 
     Args:
         db: Database connection
-        verbose: Whether to print verbose logs
 
     Returns:
         List of installed apps
@@ -287,22 +279,21 @@ async def get_installed_apps(db, verbose=False):
                 else:
                     await db.execute("DELETE FROM installed_apps WHERE id = ?", (app_id,))
                     await db.commit()
-                    store_print(f"Removed {app_id} from database as app directory is missing", verbose)
+                    logger.warning(f"Removed {app_id} from database as app directory is missing")
 
-        store_print(f"Found {len(installed_apps)} installed apps", verbose)
+        logger.info(f"Found {len(installed_apps)} installed apps")
         return installed_apps
     except Exception as e:
-        store_print(f"Error getting installed apps: {e}", verbose)
+        logger.error(f"Error getting installed apps: {e}")
         return []
 
-async def get_installed_app(db, app_id, verbose=False):
+async def get_installed_app(db, app_id):
     """
     Get information about an installed app.
 
     Args:
         db: Database connection
         app_id: App ID
-        verbose: Whether to print verbose logs
 
     Returns:
         App information or None if not found
@@ -333,9 +324,9 @@ async def get_installed_app(db, app_id, verbose=False):
                 else:
                     await db.execute("DELETE FROM installed_apps WHERE id = ?", (app_id,))
                     await db.commit()
-                    store_print(f"Removed {app_id} from database as app directory is missing", verbose)
+                    logger.warning(f"Removed {app_id} from database as app directory is missing")
 
             return None
     except Exception as e:
-        store_print(f"Error getting installed app: {e}", verbose)
+        logger.error(f"Error getting installed app: {e}")
         return None

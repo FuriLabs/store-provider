@@ -11,8 +11,9 @@ import os
 from dbus_fast.aio import MessageBus
 from dbus_fast.service import ServiceInterface, method, signal
 from dbus_fast import BusType, Variant
+from loguru import logger
 
-from common.utils import store_print, download_file
+from common.utils import download_file
 from android_store.database import (
     init_database, save_packages_to_db, ensure_populated,
     search_packages, get_package_by_id
@@ -33,10 +34,9 @@ DOWNLOAD_CACHE_DIR = os.path.expanduser("~/.cache/store-provider/android-store/d
 IDLE_TIMEOUT = 120
 
 class FDroidInterface(ServiceInterface):
-    def __init__(self, verbose=False, idle_callback=None):
-        store_print("Initializing F-Droid store daemon", verbose)
+    def __init__(self, idle_callback=None):
+        logger.info("Initializing F-Droid store daemon")
         super().__init__('io.FuriOS.AndroidStore.fdroid')
-        self.verbose = verbose
         self.session = None
         self.db = None
         self.json_enc = msgspec.json.Encoder()
@@ -60,7 +60,7 @@ class FDroidInterface(ServiceInterface):
         os.makedirs(CACHE_DIR, exist_ok=True)
         os.makedirs(DOWNLOAD_CACHE_DIR, exist_ok=True)
 
-        self.db = await init_database(DATABASE, self.verbose)
+        self.db = await init_database(DATABASE)
 
     async def ensure_session(self):
         """Ensure HTTP session exists"""
@@ -78,7 +78,7 @@ class FDroidInterface(ServiceInterface):
         if not self._running:
             self._running = True
             self._task_processor = asyncio.create_task(self._process_task_queue())
-            store_print("Task processor started", self.verbose)
+            logger.info("Task processor started")
 
     def _reset_idle_timer(self):
         """Reset the idle timer when activity occurs"""
@@ -103,14 +103,14 @@ class FDroidInterface(ServiceInterface):
                     future.set_result(result)
                 except Exception as e:
                     future.set_exception(e)
-                    store_print(f"Task error: {e}", self.verbose)
+                    logger.error(f"Task error: {e}")
 
                 # Mark task as done
                 self._task_queue.task_done()
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                store_print(f"Task processor error: {e}", self.verbose)
+                logger.error(f"Task processor error: {e}")
 
     async def _queue_task(self, task_func):
         """Queue a task and wait for its result"""
@@ -131,16 +131,16 @@ class FDroidInterface(ServiceInterface):
         repo_success = False
 
         for repo_url in repos:
-            store_print(f"Downloading {config_file} index from {repo_url} (from {repo_dir})", self.verbose)
-            if await download_index(self.session, repo_url, config_file, CACHE_DIR, self.verbose):
-                store_print(f"Successfully downloaded {config_file}", self.verbose)
+            logger.info(f"Downloading {config_file} index from {repo_url} (from {repo_dir})")
+            if await download_index(self.session, repo_url, config_file, CACHE_DIR):
+                logger.info(f"Successfully downloaded {config_file}")
                 repo_success = True
                 break
             else:
-                store_print(f"Failed to download from {repo_url}, trying next mirror...", self.verbose)
+                logger.error(f"Failed to download from {repo_url}, trying next mirror...")
 
         if not repo_success:
-            store_print(f"Failed to download {config_file} from all mirrors", self.verbose)
+            logger.error(f"Failed to download {config_file} from all mirrors")
 
         return repo_success
 
@@ -152,13 +152,13 @@ class FDroidInterface(ServiceInterface):
             for config_file in os.listdir(CUSTOM_REPO_CONFIG_DIR):
                 if os.path.isfile(os.path.join(CUSTOM_REPO_CONFIG_DIR, config_file)):
                     all_repo_files.add(config_file)
-                    store_print(f"Found repository in custom dir: {config_file}", self.verbose)
+                    logger.info(f"Found repository in custom dir: {config_file}")
 
         if os.path.exists(DEFAULT_REPO_CONFIG_DIR) and os.path.isdir(DEFAULT_REPO_CONFIG_DIR):
             for config_file in os.listdir(DEFAULT_REPO_CONFIG_DIR):
                 if os.path.isfile(os.path.join(DEFAULT_REPO_CONFIG_DIR, config_file)) and config_file not in all_repo_files:
                     all_repo_files.add(config_file)
-                    store_print(f"Found repository in default dir: {config_file}", self.verbose)
+                    logger.info(f"Found repository in default dir: {config_file}")
 
         tasks = []
         for config_file in all_repo_files:
@@ -173,38 +173,38 @@ class FDroidInterface(ServiceInterface):
         results = await asyncio.gather(*tasks)
         overall_success = any(results)
 
-        packages = await process_indexes(CACHE_DIR, self.json_enc, self.verbose)
-        await save_packages_to_db(self.db, packages, self.json_enc, self.verbose)
+        packages = await process_indexes(CACHE_DIR, self.json_enc)
+        await save_packages_to_db(self.db, packages, self.json_enc)
 
         await self.cleanup_session()
         return overall_success
 
     async def ensure_populated(self):
-        return await ensure_populated(self.db, self.update_cache, self.verbose)
+        return await ensure_populated(self.db, self.update_cache)
 
     async def get_upgradable_packages(self):
-        return await compare_installed_with_repo(self.db, msgspec.json.decode, self.verbose)
+        return await compare_installed_with_repo(self.db, msgspec.json.decode)
 
     @method()
     async def Search(self, query: 's') -> 's':
         async def _search_task():
-            store_print(f"Searching for {query}", self.verbose)
+            logger.info(f"Searching for {query}")
             results = []
 
-            if not await ping_session_manager(self.verbose):
+            if not await ping_session_manager():
                 return json.dumps(results)
 
             if not await self.ensure_populated():
                 return json.dumps(results)
 
-            results = await search_packages(self.db, query, msgspec.json.decode, self.verbose)
+            results = await search_packages(self.db, query, msgspec.json.decode)
             return json.dumps(results)
         return await self._queue_task(_search_task)
 
     @method()
     async def UpdateCache(self) -> 'b':
         async def _update_cache_task():
-            if not await ping_session_manager(self.verbose):
+            if not await ping_session_manager():
                 return False
             return await self.update_cache()
         return await self._queue_task(_update_cache_task)
@@ -212,42 +212,42 @@ class FDroidInterface(ServiceInterface):
     @method()
     async def Install(self, package_id: 's') -> 'b':
         async def _install_task():
-            store_print(f"Installing package {package_id}", self.verbose)
+            logger.info(f"Installing package {package_id}")
 
-            if not await ping_session_manager(self.verbose):
+            if not await ping_session_manager():
                 return False
 
             if not await self.ensure_populated():
                 return False
 
             try:
-                package_info = await get_package_by_id(self.db, package_id, msgspec.json.decode, self.verbose)
+                package_info = await get_package_by_id(self.db, package_id, msgspec.json.decode)
                 if not package_info:
-                    store_print(f"Package {package_id} not found", self.verbose)
+                    logger.error(f"Package {package_id} not found")
                     return False
 
                 os.makedirs(DOWNLOAD_CACHE_DIR, exist_ok=True)
                 await self.ensure_session()
 
                 filepath = os.path.join(DOWNLOAD_CACHE_DIR, package_info['apk_name'])
-                result = await download_file(self.session, package_info['download_url'], filepath, self.verbose)
+                result = await download_file(self.session, package_info['download_url'], filepath)
 
                 if not result:
                     return False
 
-                store_print(f"APK downloaded to: {filepath}", self.verbose)
-                success = await install_app(filepath, self.verbose)
+                logger.info(f"APK downloaded to: {filepath}")
+                success = await install_app(filepath)
                 os.remove(filepath)
 
                 if success:
                     self.AppInstalled(package_id)
-                    store_print(f"Successfully installed {package_id}", self.verbose)
+                    logger.success(f"Successfully installed {package_id}")
                     return True
                 else:
-                    store_print(f"Failed to install {package_id}", self.verbose)
+                    logger.error(f"Failed to install {package_id}")
                     return False
             except Exception as e:
-                store_print(f"Installation failed: {e}", self.verbose)
+                logger.error(f"Installation failed: {e}")
                 return False
         return await self._queue_task(_install_task)
 
@@ -258,10 +258,10 @@ class FDroidInterface(ServiceInterface):
     @method()
     async def GetRepositories(self) -> 'a(ss)':
         async def _get_repositories_task():
-            store_print("Getting repositories", self.verbose)
+            logger.info("Getting repositories")
             repositories = []
 
-            if not await ping_session_manager(self.verbose):
+            if not await ping_session_manager():
                 return repositories
 
             repo_files = {}  # filename -> (repo_dir, url)
@@ -296,10 +296,10 @@ class FDroidInterface(ServiceInterface):
     @method()
     async def GetUpgradable(self) -> 'aa{sv}':
         async def _get_upgradable_task():
-            store_print("Getting upgradable", self.verbose)
+            logger.info("Getting upgradable")
             upgradable = []
 
-            if not await ping_session_manager(self.verbose):
+            if not await ping_session_manager():
                 return upgradable
 
             raw_upgradable = await self.get_upgradable_packages()
@@ -314,16 +314,16 @@ class FDroidInterface(ServiceInterface):
                     'package': Variant('s', json.dumps(pkg['packageInfo']))
                 }
                 upgradable.append(upgradable_info)
-                store_print(f"{upgradable_info['packageName'].value} {upgradable_info['name'].value} {upgradable_info['currentVersion'].value} {upgradable_info['availableVersion'].value}", self.verbose)
+                logger.info(f"{upgradable_info['packageName'].value} {upgradable_info['name'].value} {upgradable_info['currentVersion'].value} {upgradable_info['availableVersion'].value}")
             return upgradable
         return await self._queue_task(_get_upgradable_task)
 
     @method()
     async def UpgradePackages(self, packages: 'as') -> 'b':
         async def _upgrade_packages_task():
-            store_print(f"Upgrading packages {packages}", self.verbose)
+            logger.info(f"Upgrading packages {packages}")
 
-            if not await ping_session_manager(self.verbose):
+            if not await ping_session_manager():
                 return False
 
             upgradables = await self.get_upgradable_packages()
@@ -331,10 +331,10 @@ class FDroidInterface(ServiceInterface):
 
             if not upgrade_list:
                 upgrade_list = [pkg['id'] for pkg in upgradables]
-                store_print(f"Upgrading all available packages: {upgrade_list}", self.verbose)
+                logger.info(f"Upgrading all available packages: {upgrade_list}")
 
             if not upgrade_list:
-                store_print("No packages to upgrade", self.verbose)
+                logger.info("No packages to upgrade")
                 return True
 
             os.makedirs(DOWNLOAD_CACHE_DIR, exist_ok=True)
@@ -343,29 +343,29 @@ class FDroidInterface(ServiceInterface):
             for package_id in upgrade_list:
                 for pkg in upgradables:
                     if pkg['id'] == package_id:
-                        store_print(f"Installing upgrade for {package_id}", self.verbose)
+                        logger.info(f"Installing upgrade for {package_id}")
                         try:
                             package_info = pkg['packageInfo']
                             download_url = package_info['download_url']
                             apk_name = package_info['apk_name']
                             filepath = os.path.join(DOWNLOAD_CACHE_DIR, apk_name)
 
-                            result = await download_file(self.session, download_url, filepath, self.verbose)
+                            result = await download_file(self.session, download_url, filepath)
                             if not result:
-                                store_print(f"Failed to download {package_id}", self.verbose)
+                                logger.error(f"Failed to download {package_id}")
                                 continue
 
-                            store_print(f"APK downloaded to: {filepath}", self.verbose)
-                            success = await install_app(filepath, self.verbose)
+                            logger.info(f"APK downloaded to: {filepath}")
+                            success = await install_app(filepath)
                             os.remove(filepath)
 
                             if not success:
-                                store_print(f"Failed to upgrade {package_id}", self.verbose)
+                                logger.error(f"Failed to upgrade {package_id}")
                                 return False
 
                             break
                         except Exception as e:
-                            store_print(f"Error upgrading {package_id}: {e}", self.verbose)
+                            logger.error(f"Error upgrading {package_id}: {e}")
                             return False
             await self.cleanup_session()
             return True
@@ -374,9 +374,9 @@ class FDroidInterface(ServiceInterface):
     @method()
     async def RemoveRepository(self, repo_id: 's') -> 'b':
         async def _remove_repository_task():
-            store_print(f"Removing repository {repo_id}", self.verbose)
+            logger.info(f"Removing repository {repo_id}")
 
-            if not await ping_session_manager(self.verbose):
+            if not await ping_session_manager():
                 return False
             return True
         return await self._queue_task(_remove_repository_task)
@@ -384,21 +384,21 @@ class FDroidInterface(ServiceInterface):
     @method()
     async def GetInstalledApps(self) -> 'aa{sv}':
         async def _get_installed_apps_task():
-            store_print("Getting installed apps", self.verbose)
+            logger.info("Getting installed apps")
 
-            if not await ping_session_manager(self.verbose):
+            if not await ping_session_manager():
                 return []
-            return await get_apps_info(self.verbose)
+            return await get_apps_info()
         return await self._queue_task(_get_installed_apps_task)
 
     @method()
     async def UninstallApp(self, package_name: 's') -> 'b':
         async def _uninstall_app_task():
-            store_print(f"Uninstalling app {package_name}", self.verbose)
+            logger.info(f"Uninstalling app {package_name}")
 
-            if not await ping_session_manager(self.verbose):
+            if not await ping_session_manager():
                 return False
-            return await remove_app(package_name, self.verbose)
+            return await remove_app(package_name)
         return await self._queue_task(_uninstall_app_task)
 
     async def cleanup(self):
@@ -417,9 +417,8 @@ class FDroidInterface(ServiceInterface):
             await self.db.close()
 
 class AndroidStoreService:
-    def __init__(self, verbose, idle_callback=None):
-        store_print("Initializing Android store service", verbose)
-        self.verbose = verbose
+    def __init__(self, idle_callback=None):
+        logger.info("Initializing Android store service")
         self.bus = None
         self.fdroid_interface = None
         self.idle_callback = idle_callback
@@ -429,7 +428,6 @@ class AndroidStoreService:
         self.bus = await MessageBus(bus_type=BusType.SESSION).connect()
 
         self.fdroid_interface = FDroidInterface(
-            verbose=self.verbose,
             idle_callback=self.idle_callback
         )
 

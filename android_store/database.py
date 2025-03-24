@@ -7,10 +7,9 @@ import aiofiles
 import msgspec
 import json
 import os
+from loguru import logger
 
-from common.utils import store_print
-
-async def init_database(database_path, verbose=False):
+async def init_database(database_path):
     """Initialize the SQLite database"""
     os.makedirs(os.path.dirname(database_path), exist_ok=True)
 
@@ -45,11 +44,11 @@ async def init_database(database_path, verbose=False):
     """)
 
     await db.commit()
-    store_print("Database initialized", verbose)
+    logger.info("Database initialized")
 
     return db
 
-async def save_packages_to_db(db, packages, json_enc, verbose=False):
+async def save_packages_to_db(db, packages, json_enc):
     """Save packages to the database"""
     try:
         async with db.execute("BEGIN TRANSACTION;"):
@@ -88,32 +87,32 @@ async def save_packages_to_db(db, packages, json_enc, verbose=False):
                     packages,
                 )
             await db.commit()
-        store_print(f"Saved {len(packages)} packages to database", verbose)
+        logger.info(f"Saved {len(packages)} packages to database")
         return True
     except Exception as e:
-        store_print(f"Error saving packages to database: {e}", verbose)
+        logger.error(f"Error saving packages to database: {e}")
         return False
 
-async def ensure_populated(db, update_func, verbose=False):
+async def ensure_populated(db, update_func):
     """Ensure the database is populated"""
     try:
         async with db.execute("SELECT COUNT(*) FROM apps") as cursor:
             row_count = await cursor.fetchone()
 
         if not row_count[0]:
-            store_print("Database is empty, updating cache", verbose)
+            logger.warning("Database is empty, updating cache")
             overall_success = await update_func()
 
             if not overall_success:
-                store_print("Database population failed", verbose)
+                logger.error("Database population failed")
                 return False
 
         return True
     except Exception as e:
-        store_print(f"Error checking database population: {e}", verbose)
+        logger.error(f"Error checking database population: {e}")
         return False
 
-async def search_packages(db, query, json_decoder, verbose=False):
+async def search_packages(db, query, json_decoder):
     """Search for packages in the database"""
     results = []
     try:
@@ -147,13 +146,13 @@ async def search_packages(db, query, json_decoder, verbose=False):
                     'package': json_decoder(row[15]) if row[15] else None
                 }
                 results.append(app_info)
-        store_print(f"Found {len(results)} results for query: {query}", verbose)
+        logger.info(f"Found {len(results)} results for query: {query}")
         return results
     except Exception as e:
-        store_print(f"Error searching packages: {e}", verbose)
+        logger.error(f"Error searching packages: {e}")
         return []
 
-async def get_package_by_id(db, package_id, json_decoder, verbose=False):
+async def get_package_by_id(db, package_id, json_decoder):
     """Get package details by ID"""
     try:
         sql_query = """
@@ -166,14 +165,14 @@ async def get_package_by_id(db, package_id, json_decoder, verbose=False):
         async with db.execute(sql_query, (package_id,)) as cursor:
             rows = await cursor.fetchall()
             if len(rows) > 1:
-                store_print(f"Multiple entries found for {package_id}", verbose)
+                logger.warning(f"Multiple entries found for {package_id}")
 
             for row in rows:
                 repository, package_json = row
-                store_print(f"Found package {package_id} in {repository}", verbose)
+                logger.info(f"Found package {package_id} in {repository}")
                 package_info = json_decoder(package_json)
                 break
         return package_info
     except Exception as e:
-        store_print(f"Error getting package by ID: {e}", verbose)
+        logger.error(f"Error getting package by ID: {e}")
         return None
