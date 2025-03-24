@@ -20,7 +20,7 @@ async def fetch_app_list(session, verbose=False):
         List of apps
     """
     apps = []
-    next_url = OPENSTORE_API_URL
+    next_url = f"{OPENSTORE_API_URL}?type=app&channel=focal"
     page_count = 0
 
     while next_url:
