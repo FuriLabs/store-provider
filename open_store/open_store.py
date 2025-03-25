@@ -24,6 +24,9 @@ from open_store.database import (
     get_installed_apps, get_installed_app
 )
 from open_store.api import fetch_app_list, get_app_details
+from open_store.apt import (
+    is_package_installed, install_package, update_cache
+)
 from open_store.click import (
     extract_click_package, get_system_architecture,
     find_compatible_download,
@@ -236,6 +239,12 @@ class OpenStoreInterface(ServiceInterface):
             if not download_url:
                 logger.error(f"No download URL for {package_id}")
                 return False
+
+            if not is_package_installed("furios-lomiri-app-support"):
+                await update_cache()
+                await install_package("furios-lomiri-app-support")
+            else:
+                logger.info("Lomiri app support is already installed. skipping")
 
             # Create a temporary directory for downloading the click package
             with tempfile.TemporaryDirectory() as temp_download_dir:
