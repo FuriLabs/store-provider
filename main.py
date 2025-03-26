@@ -28,37 +28,50 @@ async def main():
     args = parser.parse_args()
     configure_logger(args)
 
-    loop = asyncio.get_running_loop()
+    manager = StoreManager()
 
     stop_event = asyncio.Event()
+    main_task = None
 
     def handle_sigint():
         logger.info("Received SIGINT, shutting down...")
         stop_event.set()
 
+        if main_task and not main_task.done():
+            main_task.cancel()
+
+    loop = asyncio.get_running_loop()
+
     loop.add_signal_handler(signal.SIGINT, handle_sigint)
+    loop.add_signal_handler(signal.SIGTERM, handle_sigint)
 
-    manager = StoreManager()
+    try:
+        main_task = asyncio.create_task(manager.setup())
+        stop_task = asyncio.create_task(stop_event.wait())
+        done, pending = await asyncio.wait(
+            [main_task, stop_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
 
-    setup_task = asyncio.create_task(manager.setup())
-    stop_task = asyncio.create_task(stop_event.wait())
+        for task in pending:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
-    done, pending = await asyncio.wait(
-        [setup_task, stop_task],
-        return_when=asyncio.FIRST_COMPLETED
-    )
-
-    for task in pending:
-        task.cancel()
-
-    for task in done:
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.error(f"Error in task: {e}")
-    logger.info("Main loop exited, goodbye!")
+        for task in done:
+            if task is main_task and not task.cancelled():
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    logger.error(f"Error in manager setup: {e}")
+    except asyncio.CancelledError:
+        logger.info("Main task cancelled")
+    finally:
+        logger.info("Main loop exited, goodbye!")
 
 if __name__ == "__main__":
     asyncio.run(main())
