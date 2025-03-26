@@ -9,7 +9,7 @@ import signal
 from argparse import ArgumentParser
 from loguru import logger
 
-from store_manager.store_manager import StoreManager
+from store_manager import StoreManager
 
 def configure_logger(args) -> None:
     # Remove default logger to configure our own

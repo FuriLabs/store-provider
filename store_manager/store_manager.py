@@ -6,8 +6,8 @@
 import asyncio
 from loguru import logger
 
-from android_store.android_store import AndroidStoreService
-from open_store.open_store import OpenStoreService
+from android_store import AndroidStoreService
+from open_store import OpenStoreService
 
 from dbus_fast.service import ServiceInterface, method, signal
 from dbus_fast.aio import MessageBus
