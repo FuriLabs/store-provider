@@ -3,4 +3,6 @@ common /usr/lib/store-provider
 open_store /usr/lib/store-provider
 android_store /usr/lib/store-provider
 store_manager /usr/lib/store-provider
-data/io.FuriOS.StoreManager.service usr/share/dbus-1/services
+data/io.FuriOS.StoreManager.service /usr/share/dbus-1/services
+data/io.FuriOS.AndroidStore.service /usr/share/dbus-1/services
+data/io.FuriOS.OpenStore.service /usr/share/dbus-1/services
