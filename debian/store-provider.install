@@ -1,0 +1,6 @@
+main.py /usr/lib/store-provider
+common /usr/lib/store-provider
+open_store /usr/lib/store-provider
+android_store /usr/lib/store-provider
+store_manager /usr/lib/store-provider
+data/io.FuriOS.StoreManager.service usr/share/dbus-1/services

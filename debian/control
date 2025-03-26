@@ -1,0 +1,22 @@
+Source: store-provider
+Maintainer: Bardia Moshiri <bardia@furilabs.com>
+Section: misc
+Priority: optional
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               python3,
+Standards-Version: 4.7.0
+Vcs-Browser: https://github.com/furilabs/store-provider
+Vcs-Git: https://github.com/furilabs/store-provider.git
+
+Package: store-provider
+Architecture: all
+Depends: ${misc:Depends},
+         ${python3:Depends},
+         python3-dbus-fast,
+         python3-msgspec,
+         python3-aiofiles,
+         python3-aiosqlite,
+         python3-loguru,
+Description: Software Store action provider over DBus
+ This bridge allows to install Android and Ubuntu Touch apps from software stores through DBus
