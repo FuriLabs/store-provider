@@ -314,73 +314,81 @@ class OpenStoreInterface(ServiceInterface):
     def AppInstalled(self, package_id: 's') -> 's':
         return package_id
 
+    async def get_upgradable_apps(self, installed_apps):
+        logger.info("Checking for upgradable apps")
+        upgradable = []
+
+        try:
+            await self.ensure_session()
+
+            for app in installed_apps:
+                app_id = app['id']
+                app_name = app['name']
+                current_version = app['version']
+                channel = app['channel']
+                architecture = app['architecture']
+
+                app_details = await get_app_details(self.session, app_id)
+                if not app_details:
+                    continue
+
+                downloads = app_details.get('downloads', [])
+                compatible_downloads = [d for d in downloads if
+                                        d.get('architecture') == architecture or
+                                        d.get('architecture') == 'all']
+
+                if not compatible_downloads:
+                    continue
+
+                latest_version = None
+                latest_download = None
+
+                # Try to find matching channel first
+                channel_downloads = [d for d in compatible_downloads if d.get('channel') == channel]
+                if channel_downloads:
+                    latest_download = max(channel_downloads, key=lambda x: int(x.get('revision', 0)))
+                    latest_version = latest_download.get('version', '0.0.0')
+                else:
+                    # If no match by channel, try focal
+                    focal_downloads = [d for d in compatible_downloads if d.get('channel') == 'focal']
+                    if focal_downloads:
+                        latest_download = max(focal_downloads, key=lambda x: int(x.get('revision', 0)))
+                        latest_version = latest_download.get('version', '0.0.0')
+                    # If no focal either, just get the latest revision
+                    else:
+                        latest_download = max(compatible_downloads, key=lambda x: int(x.get('revision', 0)))
+                        latest_version = latest_download.get('version', '0.0.0')
+
+                if latest_version != current_version:
+                    app_info = {
+                        'id': Variant('s', app_id),
+                        'name': Variant('s', app_name),
+                        'packageName': Variant('s', app_id),
+                        'currentVersion': Variant('s', current_version),
+                        'availableVersion': Variant('s', latest_version),
+                        'architecture': Variant('s', architecture),
+                        'repository': Variant('s', 'OpenStore'),
+                        'download_url': Variant('s', latest_download.get('download_url', '')),
+                        'channel': Variant('s', latest_download.get('channel', ''))
+                    }
+                    upgradable.append(app_info)
+                    logger.info(f"Upgradable: {app_id} from {current_version} to {latest_version}")
+
+            return upgradable
+        except Exception as e:
+            logger.error(f"Error checking for upgradable apps: {e}")
+            return []
+
     @method()
     async def GetUpgradable(self) -> 'aa{sv}':
         async def _get_upgradable_task():
             logger.info("Getting upgradable apps")
-            upgradable = []
-
             try:
                 installed_apps = await get_installed_apps(self.installed_db)
-                await self.ensure_session()
-
-                for app in installed_apps:
-                    app_id = app['id']
-                    app_name = app['name']
-                    current_version = app['version']
-                    channel = app['channel']
-                    architecture = app['architecture']
-
-                    app_details = await get_app_details(self.session, app_id)
-                    if not app_details:
-                        continue
-
-                    downloads = app_details.get('downloads', [])
-                    compatible_downloads = [d for d in downloads if
-                                            d.get('architecture') == architecture or
-                                            d.get('architecture') == 'all']
-
-                    if not compatible_downloads:
-                        continue
-
-                    latest_version = None
-                    latest_download = None
-
-                    channel_downloads = [d for d in compatible_downloads if d.get('channel') == channel]
-                    if channel_downloads:
-                        latest_download = max(channel_downloads, key=lambda x: int(x.get('revision', 0)))
-                        latest_version = latest_download.get('version', '0.0.0')
-                    else:
-                        # If no match by channel, try focal
-                        focal_downloads = [d for d in compatible_downloads if d.get('channel') == 'focal']
-                        if focal_downloads:
-                            latest_download = max(focal_downloads, key=lambda x: int(x.get('revision', 0)))
-                            latest_version = latest_download.get('version', '0.0.0')
-                        # If no focal either, just get the latest revision
-                        else:
-                            latest_download = max(compatible_downloads, key=lambda x: int(x.get('revision', 0)))
-                            latest_version = latest_download.get('version', '0.0.0')
-
-                    if latest_version != current_version:
-                        app_info = {
-                            'id': Variant('s', app_id),
-                            'name': Variant('s', app_name),
-                            'packageName': Variant('s', app_id),
-                            'currentVersion': Variant('s', current_version),
-                            'availableVersion': Variant('s', latest_version),
-                            'architecture': Variant('s', architecture),
-                            'repository': Variant('s', 'OpenStore'),
-                            'download_url': Variant('s', latest_download.get('download_url', '')),
-                            'channel': Variant('s', latest_download.get('channel', ''))
-                        }
-                        upgradable.append(app_info)
-                        logger.info(f"Upgradable: {app_id} from {current_version} to {latest_version}")
-
-                return upgradable
+                return await self.get_upgradable_apps(installed_apps)
             except Exception as e:
                 logger.error(f"Error getting upgradable apps: {e}")
                 return []
-
         return await self._queue_task(_get_upgradable_task)
 
     @method()
@@ -390,16 +398,21 @@ class OpenStoreInterface(ServiceInterface):
 
             upgrade_list = packages
             if not upgrade_list:
-                upgradable = await self.GetUpgradable()
-                upgrade_list = [app['id'].value for app in upgradable]
+                try:
+                    installed_apps = await get_installed_apps(self.installed_db)
+                    upgradable_apps = await self.get_upgradable_apps(installed_apps)
+                    upgrade_list = [app['id'].value for app in upgradable_apps]
+                except Exception as e:
+                    logger.error(f"Error getting upgradable apps: {e}")
+                    return False
 
             if not upgrade_list:
                 logger.info("No packages to upgrade")
                 return True
 
             logger.info(f"Upgrading packages: {', '.join(upgrade_list)}")
-
             success = True
+
             for package_id in upgrade_list:
                 if not await self.Install(package_id):
                     logger.error(f"Failed to upgrade {package_id}")
