@@ -26,7 +26,7 @@ from android_store.andromeda import (
     get_apps_info, compare_installed_with_repo
 )
 
-DEFAULT_REPO_CONFIG_DIR = "/usr/lib/store-provider/android-store/repos"
+DEFAULT_REPO_CONFIG_DIR = "/usr/lib/store-provider/android_store/repos"
 CUSTOM_REPO_CONFIG_DIR = "/etc/store-provider/android-store/repos"
 DATABASE = os.path.expanduser("~/.cache/store-provider/android-store/android-store.db")
 CACHE_DIR = os.path.expanduser("~/.cache/store-provider/android-store/repo")
