@@ -1,0 +1,41 @@
+#!/bin/bash
+set -e
+
+DIVERSION_DIR="/usr/lib/furios/diversions"
+SERVICE_PATH="/usr/share/dbus-1/services/io.FuriOS.AndroidStore.service"
+REPLACEMENT_PATH="/usr/share/store-provider/io.FuriOS.AndroidStore.service"
+
+configure() {
+	mkdir -p "$DIVERSION_DIR"
+
+	if [ -e "$SERVICE_PATH" ]; then
+		owner=$(dpkg -S "$SERVICE_PATH" 2>/dev/null | cut -d ":" -f 1 || echo "")
+		if [ "$owner" = "android-store" ]; then
+			echo "Handling android-store diversion"
+
+			# Clean up any existing diversions to avoid clashes
+			if dpkg-divert --list | grep -q "$(basename $SERVICE_PATH)"; then
+				dpkg-divert --remove --rename --package store-provider --divert "$DIVERSION_DIR/$(basename $SERVICE_PATH)" "$SERVICE_PATH"
+			fi
+
+			dpkg-divert \
+				--add \
+				--rename \
+				--package store-provider \
+				--divert "$DIVERSION_DIR/$(basename $SERVICE_PATH)" \
+				"$SERVICE_PATH"
+
+			# Create symlink to the replacement service file
+			ln -sf "$REPLACEMENT_PATH" "$SERVICE_PATH"
+		fi
+	else
+		# Create symlink to the replacement service file
+		ln -sf "$REPLACEMENT_PATH" "$SERVICE_PATH"
+	fi
+}
+
+case "$1" in
+	"configure")
+		configure
+		;;
+esac
