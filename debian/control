@@ -11,6 +11,7 @@ Vcs-Git: https://github.com/furilabs/store-provider.git
 
 Package: store-provider
 Architecture: all
+Pre-Depends: android-store
 Depends: ${misc:Depends},
          ${python3:Depends},
          python3-dbus-fast,
