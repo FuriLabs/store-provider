@@ -1,11 +1,22 @@
 #!/bin/sh
 set -e
 
-# this used to be in android-store part of andromeda. get rid of it if it still exists on the system
-path="/usr/share/dbus-1/services/io.FuriOS.AndroidStore.service"
-if [ -f $path ]; then
-	owner=$(dpkg -S $path | cut -d ":" -f 1)
-	if [ "$owner" = "android-store" ]; then
-		rm -f $path
-	fi
+# Divert android-store files to /usr/lib/furios/diversions/
+mkdir -p /usr/lib/furios/diversions/
+
+service_path="/usr/share/dbus-1/services/io.FuriOS.AndroidStore.service"
+
+if [ -f $service_path ]; then
+    owner=$(dpkg -S $service_path | cut -d ":" -f 1)
+    if [ "$owner" = "android-store" ]; then
+        echo "Handling android-store diversion"
+
+        # Clean up any existing diversions to avoid clashes
+        if [ -f "/usr/lib/furios/diversions/$(basename $service_path)" ]; then
+            dpkg-divert --remove --rename --divert "/usr/lib/furios/diversions/$(basename $service_path)" $service_path
+        fi
+
+        # Create new diversion
+        dpkg-divert --add --rename --divert "/usr/lib/furios/diversions/$(basename $service_path)" $service_path
+    fi
 fi
