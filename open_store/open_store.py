@@ -212,103 +212,104 @@ class OpenStoreInterface(ServiceInterface):
     @method()
     async def Install(self, package_id: 's') -> 'b':
         async def _install_task():
-            logger.info(f"Installing package {package_id}")
-
-            await self.ensure_session()
-            app_details = await get_app_details(self.session, package_id)
-
-            if not app_details:
-                logger.error(f"Could not get app details for {package_id}")
-                return False
-
-            downloads = app_details.get('downloads', [])
-            if not downloads:
-                logger.error(f"No downloads available for {package_id}")
-                return False
-
-            compatible_download = find_compatible_download(downloads, self.system_arch)
-            if not compatible_download:
-                logger.error(f"No compatible download found for {package_id} on {self.system_arch}")
-                return False
-
-            download_url = compatible_download.get('download_url')
-            version = compatible_download.get('version', '0.0.0')
-            arch = compatible_download.get('architecture')
-            channel = compatible_download.get('channel')
-
-            if not download_url:
-                logger.error(f"No download URL for {package_id}")
-                return False
-
-            if not is_package_installed("furios-lomiri-app-support"):
-                await update_cache()
-                await install_package("furios-lomiri-app-support")
-            else:
-                logger.info("Lomiri app support is already installed. skipping")
-
-            # Create a temporary directory for downloading the click package
-            with tempfile.TemporaryDirectory() as temp_download_dir:
-                logger.info(f"Downloading {download_url} for architecture {arch}")
-                click_path = await self.download_app(download_url, package_id, version, temp_download_dir)
-
-                if not click_path:
-                    logger.error(f"Failed to download {package_id}")
-                    return False
-
-                try:
-                    # Check for existing installation and clean up
-                    old_app = await get_installed_app(self.installed_db, package_id)
-
-                    if old_app:
-                        old_app_dir = old_app['app_dir']
-
-                        await cleanup_desktop_files(package_id)
-
-                        # Remove old app directory
-                        if old_app_dir and os.path.exists(old_app_dir):
-                            try:
-                                shutil.rmtree(old_app_dir)
-                                logger.info(f"Removed old app directory: {old_app_dir}")
-                            except Exception as e:
-                                logger.error(f"Error removing old app directory: {e}")
-                except Exception as e:
-                    logger.error(f"Error checking for old version: {e}")
-
-                app_dir = os.path.join(APPS_DIR, package_id)
-                os.makedirs(app_dir, exist_ok=True)
-
-                # Extract the click package
-                extracted_dir = await extract_click_package(click_path, app_dir)
-                if not extracted_dir:
-                    logger.error(f"Failed to extract {package_id}")
-                    return False
-
-                # Process desktop files
-                desktop_files = await process_desktop_files(package_id, app_dir)
-                logger.info(f"Processed {len(desktop_files)} desktop files for {package_id}")
-
-                # Save app info to database (without click_path)
-                current_time = time()
-                success = await save_installed_app(
-                    self.installed_db,
-                    package_id,
-                    app_details.get('name', ''),
-                    version,
-                    channel,
-                    arch,
-                    current_time,
-                    app_dir
-                )
-
-                if success:
-                    self.AppInstalled(package_id)
-                    logger.success(f"Successfully installed {package_id} version {version} for {arch}")
-                    return True
-                else:
-                    logger.error("Error saving installation details")
-                    return False
+            return await self.install_package(package_id)
 
         return await self._queue_task(_install_task)
+
+    async def install_package(self, package_id):
+        logger.info(f"Installing package {package_id}")
+
+        # Ensure we have a valid session
+        await self.ensure_session()
+
+        # Fetch app metadata
+        app_details = await get_app_details(self.session, package_id)
+        if not app_details:
+            logger.error(f"Could not get app details for {package_id}")
+            return False
+
+        downloads = app_details.get('downloads', [])
+        if not downloads:
+            logger.error(f"No downloads available for {package_id}")
+            return False
+
+        compatible_download = find_compatible_download(downloads, self.system_arch)
+        if not compatible_download:
+            logger.error(f"No compatible download found for {package_id} on {self.system_arch}")
+            return False
+
+        download_url = compatible_download.get('download_url')
+        version      = compatible_download.get('version', '0.0.0')
+        arch         = compatible_download.get('architecture')
+        channel      = compatible_download.get('channel')
+
+        if not download_url:
+            logger.error(f"No download URL for {package_id}")
+            return False
+
+        # Ensure Lomiri support is present
+        if not is_package_installed("furios-lomiri-app-support"):
+            await update_cache()
+            await self.install_package("furios-lomiri-app-support")
+        else:
+            logger.info("Lomiri app support is already installed; skipping")
+
+        # Download and unpack the click package
+        with tempfile.TemporaryDirectory() as temp_download_dir:
+            logger.info(f"Downloading {package_id} ({version}) from {download_url}")
+            click_path = await self.download_app(
+                download_url, package_id, version, temp_download_dir
+            )
+            if not click_path:
+                logger.error(f"Failed to download {package_id}")
+                return False
+
+            # Remove any existing installation
+            try:
+                old_app = await get_installed_app(self.installed_db, package_id)
+                if old_app:
+                    old_app_dir = old_app['app_dir']
+                    await cleanup_desktop_files(package_id)
+                    if old_app_dir and os.path.exists(old_app_dir):
+                        shutil.rmtree(old_app_dir)
+                        logger.info(f"Removed old app directory: {old_app_dir}")
+            except Exception as e:
+                logger.error(f"Error cleaning up old version: {e}")
+
+            # Prepare new app directory
+            app_dir = os.path.join(APPS_DIR, package_id)
+            os.makedirs(app_dir, exist_ok=True)
+
+            # Extract click package
+            extracted_dir = await extract_click_package(click_path, app_dir)
+            if not extracted_dir:
+                logger.error(f"Failed to extract {package_id}")
+                return False
+
+            # Process desktop files
+            desktop_files = await process_desktop_files(package_id, app_dir)
+            logger.info(f"Processed {len(desktop_files)} desktop files for {package_id}")
+
+            # Record installation in database
+            current_time = time()
+            success = await save_installed_app(
+                self.installed_db,
+                package_id,
+                app_details.get('name', ''),
+                version,
+                channel,
+                arch,
+                current_time,
+                app_dir
+            )
+
+            if success:
+                self.AppInstalled(package_id)
+                logger.info(f"Successfully installed {package_id} v{version} for {arch}")
+                return True
+            else:
+                logger.error("Error saving installation details")
+                return False
 
     @signal()
     def AppInstalled(self, package_id: 's') -> 's':
@@ -414,7 +415,7 @@ class OpenStoreInterface(ServiceInterface):
             success = True
 
             for package_id in upgrade_list:
-                if not await self.Install(package_id):
+                if not await self.install_package(package_id):
                     logger.error(f"Failed to upgrade {package_id}")
                     success = False
             return success
