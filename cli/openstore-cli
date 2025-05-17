@@ -213,6 +213,8 @@ export QML2_IMPORT_PATH=\${PWD}/lib:\${PWD}/lib/\${TRIPLET}:\${PWD}/usr/lib/:\${
 
 export XDG_CACHE_HOME=\$HOME/.cache/
 
+gsettings set io.furios.phosh.shell appid '${app_id}_${desktop_filename}'
+
 $exec_cmd
 EOF
         chmod +x "$script_path"
