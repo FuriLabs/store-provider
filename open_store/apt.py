@@ -6,8 +6,8 @@ import asyncio
 
 from loguru import logger
 
-from dbus_next.aio import MessageBus
-from dbus_next.constants import BusType
+from dbus_fast.aio import MessageBus
+from dbus_fast.constants import BusType
 
 def is_package_installed(package_name):
     """
