@@ -11,6 +11,7 @@ import shlex
 import glob
 import stat
 import os
+import re
 from loguru import logger
 
 async def extract_click_package(click_path, target_dir):
@@ -196,6 +197,12 @@ async def process_desktop_files(app_id, app_dir):
             entry = desktop_content['Desktop Entry']
             name = entry.get('Name', app_id)
             exec_cmd = entry.get('Exec', '')
+
+            # strip trailing "%u" if present
+            exec_cmd = exec_cmd.rstrip()
+            if exec_cmd.endswith('%u'):
+                exec_cmd = exec_cmd[:-2].rstrip()
+
             icon = entry.get('Icon', '')
 
             with open(script_path, 'w') as f:

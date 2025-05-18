@@ -195,6 +195,10 @@ recreate_app() {
             fi
         done < "$desktop_file"
 
+        if [[ "$exec_cmd" =~ (.*)[[:space:]]*%u$ ]]; then
+            exec_cmd="${BASH_REMATCH[1]}"
+        fi
+
         mkdir -p "$SCRIPTS_DIR"
         cat > "$script_path" << EOF
 #!/bin/bash
