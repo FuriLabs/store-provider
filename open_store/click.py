@@ -207,6 +207,7 @@ async def process_desktop_files(app_id, app_dir):
                 f.write("export PATH=${PWD}:${PWD}/../bin:${PWD}/bin:${PWD}/usr/bin:${PWD}/lib/bin:${PWD}/lib/${TRIPLET}/bin:/usr/lib/${TRIPLET}/furios-lomiri-app-support/bin:${PATH}\n\n")
                 f.write("export QML2_IMPORT_PATH=${PWD}/lib:${PWD}/lib/${TRIPLET}:${PWD}/usr/lib/:${PWD}/usr/lib/${TRIPLET}/\n\n")
                 f.write("export XDG_CACHE_HOME=$HOME/.cache/\n\n")
+                f.write("export UITK_ICON_THEME=suru\n\n")
                 f.write(f"gsettings set io.furios.phosh.shell appid '{app_id}_{desktop_filename}'\n\n")
                 f.write(f"{exec_cmd}\n")
 
