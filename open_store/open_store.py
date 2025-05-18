@@ -160,7 +160,13 @@ class OpenStoreInterface(ServiceInterface):
             click_filename = f"{app_id}-{version}.click"
             output_path = os.path.join(output_dir, click_filename)
 
-            success = await download_file(self.session, download_url, output_path)
+            headers = {"X-Source": "StoreProvider"}
+            success = await download_file(
+                self.session,
+                download_url,
+                output_path,
+                headers=headers
+            )
 
             if success:
                 return output_path

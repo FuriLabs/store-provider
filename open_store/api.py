@@ -6,8 +6,9 @@ import json
 from loguru import logger
 
 OPENSTORE_API_URL = "https://open-store.io/api/v4/apps"
+HEADERS = {"X-Source": "StoreProvider"}
 
-async def fetch_app_list(session):
+async def fetch_app_list(session: aiohttp.ClientSession):
     """
     Fetch the list of apps from the OpenStore API.
 
@@ -24,7 +25,7 @@ async def fetch_app_list(session):
     while next_url:
         try:
             logger.info(f"Fetching page {page_count + 1} from {next_url}")
-            async with session.get(next_url) as response:
+            async with session.get(next_url, headers=HEADERS) as response:
                 if response.status != 200:
                     logger.error(f"Error fetching apps: HTTP {response.status}")
                     break
@@ -52,7 +53,7 @@ async def fetch_app_list(session):
     logger.info(f"Fetched {len(apps)} apps in {page_count} pages")
     return apps
 
-async def get_app_details(session, app_id):
+async def get_app_details(session: aiohttp.ClientSession, app_id: str):
     """
     Get detailed information about an app.
 
@@ -67,7 +68,7 @@ async def get_app_details(session, app_id):
 
     try:
         logger.info(f"Fetching app details for {app_id}")
-        async with session.get(url) as response:
+        async with session.get(url, headers=HEADERS) as response:
             if response.status != 200:
                 logger.error(f"Error fetching app details: HTTP {response.status}")
                 return None

@@ -5,7 +5,7 @@
 import os
 from loguru import logger
 
-async def download_file(session, url, output_path):
+async def download_file(session, url, output_path, headers=None):
     """
     Download a file from a URL to the specified path.
 
@@ -13,17 +13,24 @@ async def download_file(session, url, output_path):
         session: aiohttp ClientSession
         url: URL to download from
         output_path: Path to save the file
+        headers: Optional dict of HTTP headers to include in the request
 
     Returns:
         True if download was successful, False otherwise
     """
     try:
-        async with session.get(url) as response:
+        # choose whether to pass headers
+        if headers is not None:
+            req = session.get(url, headers=headers)
+        else:
+            req = session.get(url)
+
+        async with req as response:
             if response.status != 200:
                 logger.error(f"Error downloading file: HTTP {response.status}")
                 return False
 
-            # Download the file
+            # Download the file in chunks
             with open(output_path, 'wb') as f:
                 total = int(response.headers.get('content-length', 0))
                 downloaded = 0
@@ -35,7 +42,6 @@ async def download_file(session, url, output_path):
                     if total > 0:
                         progress = int(downloaded * 100 / total)
                         logger.trace(f"Download progress: {progress}%")
-
             return True
     except Exception as e:
         logger.error(f"Error downloading file: {e}")
