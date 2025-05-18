@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 
 DB_PATH="$HOME/.local/store-provider/open-store/apps.db"
 STORE_PATH="$HOME/.local/store-provider/open-store"
