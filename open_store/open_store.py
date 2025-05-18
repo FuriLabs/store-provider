@@ -25,7 +25,7 @@ from open_store.database import (
 )
 from open_store.api import fetch_app_list, get_app_details
 from open_store.apt import (
-    is_package_installed, install_package, update_cache
+    is_debian_package_installed, install_debian_package, update_debian_cache
 )
 from open_store.click import (
     extract_click_package, get_system_architecture,
@@ -248,9 +248,9 @@ class OpenStoreInterface(ServiceInterface):
             return False
 
         # Ensure Lomiri support is present
-        if not is_package_installed("furios-lomiri-app-support"):
-            await update_cache()
-            await self.install_package("furios-lomiri-app-support")
+        if not is_debian_package_installed("furios-lomiri-app-support"):
+            await update_debian_cache()
+            await install_debian_package("furios-lomiri-app-support")
         else:
             logger.info("Lomiri app support is already installed; skipping")
 
