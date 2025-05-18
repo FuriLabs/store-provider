@@ -9,7 +9,7 @@ from loguru import logger
 from dbus_fast.aio import MessageBus
 from dbus_fast.constants import BusType
 
-def is_package_installed(package_name):
+def is_debian_package_installed(package_name):
     """
     Check if a Debian package is installed.
 
@@ -28,7 +28,7 @@ def is_package_installed(package_name):
     except subprocess.CalledProcessError:
         return False
 
-async def update_cache():
+async def update_debian_cache():
     """
     Update APT package cache using AptKit D-Bus service
 
@@ -100,7 +100,7 @@ async def update_cache():
             bus.disconnect()
     return ret
 
-async def install_package(package_name):
+async def install_debian_package(package_name):
     """
     Install a Debian package using AptKit D-Bus service
 
