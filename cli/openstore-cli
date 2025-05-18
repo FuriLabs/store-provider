@@ -215,6 +215,8 @@ export XDG_CACHE_HOME=\$HOME/.cache/
 
 export UITK_ICON_THEME=suru
 
+export APP_ID=${app_id}
+
 gsettings set io.furios.phosh.shell appid '${app_id}_${desktop_filename}'
 
 $exec_cmd
