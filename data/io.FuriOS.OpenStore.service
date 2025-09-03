@@ -1,4 +1,4 @@
 [D-BUS Service]
-Name=io.FuriOS.OpenManager
+Name=io.FuriOS.OpenStore
 Exec=/usr/libexec/store-provider
 User=root
