@@ -3,7 +3,6 @@
 
 from pathlib import Path
 import subprocess
-import tempfile
 import platform
 import tarfile
 import asyncio
@@ -12,6 +11,9 @@ import glob
 import stat
 import os
 import re
+import io
+
+from debian import arfile
 from loguru import logger
 
 async def extract_click_package(click_path, target_dir):
@@ -27,36 +29,22 @@ async def extract_click_package(click_path, target_dir):
     """
     os.makedirs(target_dir, exist_ok=True)
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        try:
-            logger.info(f"Extracting click package: {click_path}")
-            subprocess.run(['ar', 'x', click_path], cwd=temp_dir, check=True)
+    try:
+        logger.info(f"Extracting click package: {click_path}")
 
-            data_tar_path = os.path.join(temp_dir, 'data.tar.gz')
-            if os.path.exists(data_tar_path):
-                with tarfile.open(data_tar_path) as tar:
-                    tar.extractall(path=target_dir)
+        ar_archive = arfile.ArFile(click_path)
+        data_member = ar_archive.getmember('data.tar.gz')
+        member_data = data_member.read()
 
-                cleanup_files = ['_click-binary', 'control.tar.gz', 'debian-binary']
-                for file_name in cleanup_files:
-                    file_path = os.path.join(temp_dir, file_name)
-                    if os.path.exists(file_path):
-                        try:
-                            os.remove(file_path)
-                        except Exception as e:
-                            logger.error(f"Error removing {file_path}: {e}")
+        with io.BytesIO(member_data) as data_stream:
+            with tarfile.open(fileobj=data_stream, mode='r:gz') as tar:
+                tar.extractall(path=target_dir)
 
-                logger.info(f"Extracted to {target_dir}")
-                return target_dir
-            else:
-                logger.warning(f"data.tar.gz not found in {click_path}")
-                return None
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Error extracting click package: {e}")
-            return None
-        except tarfile.TarError as e:
-            logger.error(f"Error extracting data tarball: {e}")
-            return None
+        logger.info(f"Extracted to {target_dir}")
+        return target_dir
+    except Exception as e:
+        logger.error(f"Error extracting click package: {e}")
+        return None
 
 def get_system_architecture():
     """
