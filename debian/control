@@ -19,5 +19,6 @@ Depends: ${misc:Depends},
          python3-aiofiles,
          python3-aiosqlite,
          python3-loguru,
+         python3-debian,
 Description: Software Store action provider over DBus
  This bridge allows to install Android and Ubuntu Touch apps from software stores through DBus
