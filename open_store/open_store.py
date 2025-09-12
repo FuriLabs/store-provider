@@ -168,11 +168,9 @@ class OpenStoreInterface(ServiceInterface):
 
             if success:
                 return output_path
-            else:
-                return None
         except Exception as e:
             logger.error(f"Error downloading app: {e}")
-            return None
+        return None
 
     @method()
     async def Search(self, query: 's') -> 's':
