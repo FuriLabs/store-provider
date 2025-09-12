@@ -45,7 +45,7 @@ async def init_database(database_path):
 
     return db
 
-async def save_packages_to_db(db, packages, json_enc):
+async def save_packages_to_db(db, packages):
     """Save packages to the database"""
     try:
         async with db.execute("BEGIN TRANSACTION;"):

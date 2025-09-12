@@ -174,7 +174,7 @@ class FDroidInterface(ServiceInterface):
         overall_success = any(results)
 
         packages = await process_indexes(CACHE_DIR, self.json_enc)
-        await save_packages_to_db(self.db, packages, self.json_enc)
+        await save_packages_to_db(self.db, packages)
 
         await self.cleanup_session()
         return overall_success
