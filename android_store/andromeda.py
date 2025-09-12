@@ -108,7 +108,7 @@ async def compare_installed_with_repo(db, json_decoder):
             rows = await cursor.fetchall()
 
         for row in rows:
-            repository, package_json, package_id, repository_url = row
+            _repository, package_json, _package_id, repository_url = row
             if not package_json:
                 continue
 
