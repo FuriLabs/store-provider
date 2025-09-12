@@ -285,7 +285,7 @@ class OpenStoreInterface(ServiceInterface):
             os.makedirs(app_dir, exist_ok=True)
 
             # Extract click package
-            extracted_dir = await extract_click_package(click_path, app_dir)
+            extracted_dir = extract_click_package(click_path, app_dir)
             if not extracted_dir:
                 logger.error(f"Failed to extract {package_id}")
                 return False
