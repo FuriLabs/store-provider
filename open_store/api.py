@@ -2,7 +2,6 @@
 # Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 
 import aiohttp
-import json
 from loguru import logger
 
 OPENSTORE_API_URL = "https://open-store.io/api/v4/apps"

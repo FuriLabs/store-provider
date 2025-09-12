@@ -3,9 +3,6 @@
 # Copyright (C) 2025 Luis Garcia <git@luigi311.com>
 
 import aiosqlite
-import aiofiles
-import msgspec
-import json
 import os
 from loguru import logger
 

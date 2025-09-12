@@ -9,9 +9,9 @@ from loguru import logger
 from android_store import AndroidStoreService
 from open_store import OpenStoreService
 
-from dbus_fast.service import ServiceInterface, method, signal
+from dbus_fast.service import ServiceInterface, method
 from dbus_fast.aio import MessageBus
-from dbus_fast import BusType, Variant
+from dbus_fast import BusType
 
 class StoreManagerInterface(ServiceInterface):
     def __init__(self):

@@ -1,16 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 
-from pathlib import Path
-import subprocess
 import platform
 import tarfile
-import asyncio
-import shlex
 import glob
 import stat
 import os
-import re
 import io
 
 from debian import arfile

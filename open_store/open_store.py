@@ -1,14 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 
-from pathlib import Path
 from time import time
 import tempfile
 import asyncio
 import aiohttp
 import shutil
 import json
-import sys
 import os
 
 from dbus_fast.aio import MessageBus
