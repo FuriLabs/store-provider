@@ -270,7 +270,7 @@ class FDroidInterface(ServiceInterface):
                 for repo_file in os.listdir(CUSTOM_REPO_CONFIG_DIR):
                     repo_path = os.path.join(CUSTOM_REPO_CONFIG_DIR, repo_file)
                     if os.path.isfile(repo_path):
-                        with open(repo_path, 'r') as f:
+                        with open(repo_path, 'r', encoding='utf-8') as f:
                             lines = [line.strip() for line in f if line.strip() and not line.startswith('#')]
                             if lines:
                                 repo_files[repo_file] = (CUSTOM_REPO_CONFIG_DIR, lines[0])
@@ -282,7 +282,7 @@ class FDroidInterface(ServiceInterface):
 
                     repo_path = os.path.join(DEFAULT_REPO_CONFIG_DIR, repo_file)
                     if os.path.isfile(repo_path):
-                        with open(repo_path, 'r') as f:
+                        with open(repo_path, 'r', encoding='utf-8') as f:
                             lines = [line.strip() for line in f if line.strip() and not line.startswith('#')]
                             if lines:
                                 repo_files[repo_file] = (DEFAULT_REPO_CONFIG_DIR, lines[0])

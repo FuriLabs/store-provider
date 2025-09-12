@@ -137,7 +137,7 @@ async def process_indexes(cache_dir, json_enc):
 def read_repo_list(repo_file, repo_dir):
     """Read repository list from a file"""
     try:
-        with open(os.path.join(repo_dir, repo_file), 'r') as f:
+        with open(os.path.join(repo_dir, repo_file), 'r', encoding='utf-8') as f:
             return [line.strip() for line in f if line.strip() and not line.startswith('#')]
     except FileNotFoundError:
         return []
