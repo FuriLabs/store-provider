@@ -325,8 +325,6 @@ async def get_installed_app(db, app_id):
                     await db.execute("DELETE FROM installed_apps WHERE id = ?", (app_id,))
                     await db.commit()
                     logger.warning(f"Removed {app_id} from database as app directory is missing")
-
-            return None
     except Exception as e:
         logger.error(f"Error getting installed app: {e}")
-        return None
+    return None
