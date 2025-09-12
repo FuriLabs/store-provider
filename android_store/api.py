@@ -52,7 +52,7 @@ def get_latest_version(versions):
 
     return latest[1]
 
-def get_package_info(package_id, metadata, version_info, repository_url):
+def get_package_info(metadata, version_info, repository_url):
     """Get package information"""
     apk_name = version_info['file']['name']
     download_url = f"{repository_url}{apk_name}"
@@ -108,7 +108,7 @@ async def process_indexes(cache_dir, json_enc):
             if not latest_version:
                 continue
 
-            package_info = get_package_info(package_id, package_data["metadata"], latest_version, repository_url)
+            package_info = get_package_info(package_data["metadata"], latest_version, repository_url)
             row = {
                 "repository": repo_dir,
                 "package_id": package_id,
