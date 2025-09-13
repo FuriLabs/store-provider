@@ -36,7 +36,6 @@ CACHE_DIR = os.path.expanduser("~/.cache/store-provider/open-store/repo")
 DOWNLOAD_DIR = os.path.expanduser("~/.cache/store-provider/open-store/downloads")
 INSTALLED_DB = os.path.expanduser("~/.local/store-provider/open-store/apps.db")
 APPS_DIR = os.path.expanduser("~/.local/store-provider/open-store")
-IDLE_TIMEOUT = 120
 OPENSTORE_API_URL = "https://open-store.io/api/v4/apps"
 
 class OpenStoreInterface(ServiceInterface):
@@ -309,9 +308,8 @@ class OpenStoreInterface(ServiceInterface):
                 self.AppInstalled(package_id)
                 logger.info(f"Successfully installed {package_id} v{version} for {arch}")
                 return True
-            else:
-                logger.error("Error saving installation details")
-                return False
+            logger.error("Error saving installation details")
+            return False
 
     @signal()
     def AppInstalled(self, package_id: 's') -> 's':
