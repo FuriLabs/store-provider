@@ -31,7 +31,6 @@ CUSTOM_REPO_CONFIG_DIR = "/etc/store-provider/android-store/repos"
 DATABASE = os.path.expanduser("~/.cache/store-provider/android-store/android-store.db")
 CACHE_DIR = os.path.expanduser("~/.cache/store-provider/android-store/repo")
 DOWNLOAD_CACHE_DIR = os.path.expanduser("~/.cache/store-provider/android-store/downloads")
-IDLE_TIMEOUT = 120
 
 class FDroidInterface(ServiceInterface):
     def __init__(self, idle_callback=None):
@@ -243,9 +242,8 @@ class FDroidInterface(ServiceInterface):
                     self.AppInstalled(package_id)
                     logger.success(f"Successfully installed {package_id}")
                     return True
-                else:
-                    logger.error(f"Failed to install {package_id}")
-                    return False
+                logger.error(f"Failed to install {package_id}")
+                return False
             except Exception as e:
                 logger.error(f"Installation failed: {e}")
                 return False
