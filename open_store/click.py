@@ -11,7 +11,7 @@ import io
 from debian import arfile
 from loguru import logger
 
-async def extract_click_package(click_path, target_dir):
+def extract_click_package(click_path, target_dir):
     """
     Extract a click package to the target directory.
 
@@ -116,7 +116,7 @@ async def download_file(session, url, output_path):
             os.remove(output_path)
         return False
 
-async def process_desktop_files(app_id, app_dir):
+def process_desktop_files(app_id, app_dir):
     """
     Process desktop files in the extracted click package.
 
@@ -234,7 +234,7 @@ async def process_desktop_files(app_id, app_dir):
             logger.error(f"Error processing desktop file {desktop_file}: {e}")
     return results
 
-async def cleanup_desktop_files(app_id):
+def cleanup_desktop_files(app_id):
     """
     Clean up desktop files and symlinks for an app.
 
@@ -269,7 +269,6 @@ async def cleanup_desktop_files(app_id):
         for script_file in script_files:
             os.remove(script_file)
             logger.info(f"Removed wrapper script: {script_file}")
-
         return True
     except Exception as e:
         logger.error(f"Error cleaning up desktop files for {app_id}: {e}")

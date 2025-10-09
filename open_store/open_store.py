@@ -270,7 +270,7 @@ class OpenStoreInterface(ServiceInterface):
                 old_app = await get_installed_app(self.installed_db, package_id)
                 if old_app:
                     old_app_dir = old_app['app_dir']
-                    await cleanup_desktop_files(package_id)
+                    cleanup_desktop_files(package_id)
                     if old_app_dir and os.path.exists(old_app_dir):
                         shutil.rmtree(old_app_dir)
                         logger.info(f"Removed old app directory: {old_app_dir}")
@@ -288,7 +288,7 @@ class OpenStoreInterface(ServiceInterface):
                 return False
 
             # Process desktop files
-            desktop_files = await process_desktop_files(package_id, app_dir)
+            desktop_files = process_desktop_files(package_id, app_dir)
             logger.info(f"Processed {len(desktop_files)} desktop files for {package_id}")
 
             # Record installation in database
