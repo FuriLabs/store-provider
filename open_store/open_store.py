@@ -461,7 +461,7 @@ class OpenStoreInterface(ServiceInterface):
                     return False
 
                 app_dir = app['app_dir']
-                await cleanup_desktop_files(package_name)
+                cleanup_desktop_files(package_name)
                 await remove_installed_app(self.installed_db, package_name)
 
                 if app_dir and os.path.exists(app_dir):
