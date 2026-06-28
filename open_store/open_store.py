@@ -11,7 +11,8 @@ from time import time
 import aiohttp
 from dbus_fast import BusType, Variant
 from dbus_fast.aio import MessageBus
-from dbus_fast.service import ServiceInterface, method, signal
+from dbus_fast.constants import PropertyAccess
+from dbus_fast.service import ServiceInterface, dbus_property, method, signal
 from loguru import logger
 
 from common.utils import download_file
@@ -61,6 +62,24 @@ class OpenStoreInterface(ServiceInterface):
 
         self.idle_callback = idle_callback
         self.idle_timer = None
+
+        # Progress tracking properties
+        self.props = {
+            "DownloadProgress": Variant(
+                "a{sv}",
+                {
+                    "package_id": Variant("s", ""),
+                    "progress": Variant("i", 0),
+                },
+            ),
+            "InstallStatus": Variant(
+                "a{sv}",
+                {
+                    "package_id": Variant("s", ""),
+                    "status": Variant("s", ""),
+                },
+            ),
+        }
 
         # Task queue implementation
         self._task_queue = asyncio.Queue()
@@ -159,7 +178,9 @@ class OpenStoreInterface(ServiceInterface):
 
         return False
 
-    async def download_app(self, download_url, app_id, version, output_dir):
+    async def download_app(
+        self, download_url, app_id, version, output_dir, progress_callback=None
+    ):
         await self.ensure_session()
 
         try:
@@ -168,7 +189,11 @@ class OpenStoreInterface(ServiceInterface):
 
             headers = {"X-Source": "StoreProvider"}
             success = await download_file(
-                self.session, download_url, output_path, headers=headers
+                self.session,
+                download_url,
+                output_path,
+                headers=headers,
+                progress_callback=progress_callback,
             )
 
             if success:
@@ -230,6 +255,7 @@ class OpenStoreInterface(ServiceInterface):
         await self.ensure_session()
 
         # Fetch app metadata
+        self._emit_install_status(package_id, "fetching_metadata")
         app_details = await get_app_details(self.session, package_id)
         if not app_details:
             logger.error(f"Could not get app details for {package_id}")
@@ -258,6 +284,7 @@ class OpenStoreInterface(ServiceInterface):
 
         # Ensure Lomiri support is present
         if not is_debian_package_installed("furios-lomiri-app-support"):
+            self._emit_install_status(package_id, "installing_dependencies")
             await update_debian_cache()
             await install_debian_package("furios-lomiri-app-support")
         else:
@@ -266,8 +293,13 @@ class OpenStoreInterface(ServiceInterface):
         # Download and unpack the click package
         with tempfile.TemporaryDirectory() as temp_download_dir:
             logger.info(f"Downloading {package_id} ({version}) from {download_url}")
+            self._emit_install_status(package_id, "downloading")
             click_path = await self.download_app(
-                download_url, package_id, version, temp_download_dir
+                download_url,
+                package_id,
+                version,
+                temp_download_dir,
+                progress_callback=lambda p: self._emit_download_progress(package_id, p),
             )
             if not click_path:
                 logger.error(f"Failed to download {package_id}")
@@ -290,18 +322,19 @@ class OpenStoreInterface(ServiceInterface):
             os.makedirs(app_dir, exist_ok=True)
 
             # Extract click package
+            self._emit_install_status(package_id, "extracting")
             extracted_dir = extract_click_package(click_path, app_dir)
             if not extracted_dir:
                 logger.error(f"Failed to extract {package_id}")
                 return False
 
             # Process desktop files
+            self._emit_install_status(package_id, "configuring")
             desktop_files = process_desktop_files(package_id, app_dir)
             logger.info(
                 f"Processed {len(desktop_files)} desktop files for {package_id}"
             )
 
-            # Record installation in database
             current_time = time()
             success = await save_installed_app(
                 self.installed_db,
@@ -326,6 +359,50 @@ class OpenStoreInterface(ServiceInterface):
     @signal()
     def AppInstalled(self, package_id: "s") -> "s":
         return package_id
+
+    @signal()
+    def DownloadProgressChanged(self, package_id: "s", progress: "i") -> "si":
+        return package_id, progress
+
+    @signal()
+    def InstallStatusChanged(self, package_id: "s", status: "s") -> "ss":
+        return package_id, status
+
+    def _emit_download_progress(self, package_id: str, progress: int):
+        """Emit DownloadProgressChanged signal and update DownloadProgress property."""
+        self.props["DownloadProgress"] = Variant(
+            "a{sv}",
+            {
+                "package_id": Variant("s", package_id),
+                "progress": Variant("i", progress),
+            },
+        )
+        self.DownloadProgressChanged(package_id, progress)
+        self.emit_properties_changed(
+            {"DownloadProgress": self.props["DownloadProgress"].value}, []
+        )
+
+    def _emit_install_status(self, package_id: str, status: str):
+        """Emit InstallStatusChanged signal and update InstallStatus property."""
+        self.props["InstallStatus"] = Variant(
+            "a{sv}",
+            {
+                "package_id": Variant("s", package_id),
+                "status": Variant("s", status),
+            },
+        )
+        self.InstallStatusChanged(package_id, status)
+        self.emit_properties_changed(
+            {"InstallStatus": self.props["InstallStatus"].value}, []
+        )
+
+    @dbus_property(access=PropertyAccess.READ)
+    def DownloadProgress(self) -> "a{sv}":
+        return self.props["DownloadProgress"].value
+
+    @dbus_property(access=PropertyAccess.READ)
+    def InstallStatus(self) -> "a{sv}":
+        return self.props["InstallStatus"].value
 
     async def get_upgradable_apps(self, installed_apps):
         logger.info("Checking for upgradable apps")

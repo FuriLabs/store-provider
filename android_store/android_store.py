@@ -10,7 +10,8 @@ import aiohttp
 import msgspec
 from dbus_fast import BusType, Variant
 from dbus_fast.aio import MessageBus
-from dbus_fast.service import ServiceInterface, method, signal
+from dbus_fast.constants import PropertyAccess
+from dbus_fast.service import ServiceInterface, dbus_property, method, signal
 from loguru import logger
 
 from android_store.andromeda import (
@@ -53,6 +54,24 @@ class FDroidInterface(ServiceInterface):
 
         self.idle_callback = idle_callback
         self.idle_timer = None
+
+        # Progress tracking properties
+        self.props = {
+            "DownloadProgress": Variant(
+                "a{sv}",
+                {
+                    "package_id": Variant("s", ""),
+                    "progress": Variant("i", 0),
+                },
+            ),
+            "InstallStatus": Variant(
+                "a{sv}",
+                {
+                    "package_id": Variant("s", ""),
+                    "status": Variant("s", ""),
+                },
+            ),
+        }
 
         # Task queue implementation
         self._task_queue = asyncio.Queue()
@@ -256,15 +275,22 @@ class FDroidInterface(ServiceInterface):
                 os.makedirs(DOWNLOAD_CACHE_DIR, exist_ok=True)
                 await self.ensure_session()
 
+                self._emit_install_status(package_id, "downloading")
                 filepath = os.path.join(DOWNLOAD_CACHE_DIR, package_info["apk_name"])
                 result = await download_file(
-                    self.session, package_info["download_url"], filepath
+                    self.session,
+                    package_info["download_url"],
+                    filepath,
+                    progress_callback=lambda p: self._emit_download_progress(
+                        package_id, p
+                    ),
                 )
 
                 if not result:
                     return False
 
                 logger.info(f"APK downloaded to: {filepath}")
+                self._emit_install_status(package_id, "installing")
                 success = await install_app(filepath)
                 os.remove(filepath)
 
@@ -283,6 +309,50 @@ class FDroidInterface(ServiceInterface):
     @signal()
     def AppInstalled(self, package_id: "s") -> "s":
         return package_id
+
+    @signal()
+    def DownloadProgressChanged(self, package_id: "s", progress: "i") -> "si":
+        return package_id, progress
+
+    @signal()
+    def InstallStatusChanged(self, package_id: "s", status: "s") -> "ss":
+        return package_id, status
+
+    def _emit_download_progress(self, package_id: str, progress: int):
+        """Emit DownloadProgressChanged signal and update DownloadProgress property."""
+        self.props["DownloadProgress"] = Variant(
+            "a{sv}",
+            {
+                "package_id": Variant("s", package_id),
+                "progress": Variant("i", progress),
+            },
+        )
+        self.DownloadProgressChanged(package_id, progress)
+        self.emit_properties_changed(
+            {"DownloadProgress": self.props["DownloadProgress"].value}, []
+        )
+
+    def _emit_install_status(self, package_id: str, status: str):
+        """Emit InstallStatusChanged signal and update InstallStatus property."""
+        self.props["InstallStatus"] = Variant(
+            "a{sv}",
+            {
+                "package_id": Variant("s", package_id),
+                "status": Variant("s", status),
+            },
+        )
+        self.InstallStatusChanged(package_id, status)
+        self.emit_properties_changed(
+            {"InstallStatus": self.props["InstallStatus"].value}, []
+        )
+
+    @dbus_property(access=PropertyAccess.READ)
+    def DownloadProgress(self) -> "a{sv}":
+        return self.props["DownloadProgress"].value
+
+    @dbus_property(access=PropertyAccess.READ)
+    def InstallStatus(self) -> "a{sv}":
+        return self.props["InstallStatus"].value
 
     @method()
     async def GetRepositories(self) -> "a(ss)":
@@ -401,14 +471,21 @@ class FDroidInterface(ServiceInterface):
                             apk_name = package_info["apk_name"]
                             filepath = os.path.join(DOWNLOAD_CACHE_DIR, apk_name)
 
+                            self._emit_install_status(package_id, "downloading")
                             result = await download_file(
-                                self.session, download_url, filepath
+                                self.session,
+                                download_url,
+                                filepath,
+                                progress_callback=lambda p: (
+                                    self._emit_download_progress(package_id, p)
+                                ),
                             )
                             if not result:
                                 logger.error(f"Failed to download {package_id}")
                                 continue
 
                             logger.info(f"APK downloaded to: {filepath}")
+                            self._emit_install_status(package_id, "installing")
                             success = await install_app(filepath)
                             os.remove(filepath)
 
