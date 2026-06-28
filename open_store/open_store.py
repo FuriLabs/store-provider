@@ -186,7 +186,7 @@ class OpenStoreInterface(ServiceInterface):
 
             return json.dumps(results)
 
-        return await self._queue_task(_search_task)
+        return await _search_task()
 
     @method()
     async def GetRepositories(self) -> 'a(ss)':
@@ -195,7 +195,7 @@ class OpenStoreInterface(ServiceInterface):
             # For now, just return OpenStore as the only repository
             return [["OpenStore", "https://open-store.io"]]
 
-        return await self._queue_task(_get_repositories_task)
+        return await _get_repositories_task()
 
     @method()
     async def UpdateCache(self) -> 'b':
@@ -390,7 +390,8 @@ class OpenStoreInterface(ServiceInterface):
             except Exception as e:
                 logger.error(f"Error getting upgradable apps: {e}")
                 return []
-        return await self._queue_task(_get_upgradable_task)
+
+        return await _get_upgradable_task()
 
     @method()
     async def UpgradePackages(self, packages: 'as') -> 'b':
@@ -447,7 +448,7 @@ class OpenStoreInterface(ServiceInterface):
                 logger.error(f"Error getting installed apps: {e}")
                 return []
 
-        return await self._queue_task(_get_installed_apps_task)
+        return await _get_installed_apps_task()
 
     @method()
     async def UninstallApp(self, package_name: 's') -> 'b':
