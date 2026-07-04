@@ -198,7 +198,7 @@ class FDroidInterface(ServiceInterface):
 
             results = await search_packages(self.db, query, msgspec.json.decode)
             return json.dumps(results)
-        return await self._queue_task(_search_task)
+        return await _search_task()
 
     @method()
     async def UpdateCache(self) -> 'b':
@@ -289,7 +289,7 @@ class FDroidInterface(ServiceInterface):
                 source = "custom" if repo_dir == CUSTOM_REPO_CONFIG_DIR else "default"
                 repositories.append([f"{repo_file} ({source})", repo_url])
             return repositories
-        return await self._queue_task(_get_repositories_task)
+        return await _get_repositories_task()
 
     @method()
     async def GetUpgradable(self) -> 'aa{sv}':
@@ -314,7 +314,7 @@ class FDroidInterface(ServiceInterface):
                 upgradable.append(upgradable_info)
                 logger.info(f"{upgradable_info['packageName'].value} {upgradable_info['name'].value} {upgradable_info['currentVersion'].value} {upgradable_info['availableVersion'].value}")
             return upgradable
-        return await self._queue_task(_get_upgradable_task)
+        return await _get_upgradable_task()
 
     @method()
     async def UpgradePackages(self, packages: 'as') -> 'b':
@@ -387,7 +387,7 @@ class FDroidInterface(ServiceInterface):
             if not await ping_session_manager():
                 return []
             return await get_apps_info()
-        return await self._queue_task(_get_installed_apps_task)
+        return await _get_installed_apps_task()
 
     @method()
     async def UninstallApp(self, package_name: 's') -> 'b':
