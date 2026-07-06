@@ -4,27 +4,29 @@
 # Copyright (C) 2025 Luis Garcia <git@luigi311.com>
 
 import asyncio
+
+from dbus_fast import BusType
+from dbus_fast.aio import MessageBus
+from dbus_fast.service import ServiceInterface, method
 from loguru import logger
 
 from android_store import AndroidStoreService
 from open_store import OpenStoreService
 
-from dbus_fast.service import ServiceInterface, method
-from dbus_fast.aio import MessageBus
-from dbus_fast import BusType
 
 class StoreManagerInterface(ServiceInterface):
     def __init__(self):
         logger.info("Initializing Store Manager interface")
-        super().__init__('io.FuriOS.StoreManager')
+        super().__init__("io.FuriOS.StoreManager")
 
     @method()
-    async def Start(self) -> 'b':
+    async def Start(self) -> "b":
         return True
 
     @method()
-    async def GetAvailableStores(self) -> 'as':
+    async def GetAvailableStores(self) -> "as":
         return ["AndroidStore", "OpenStore"]
+
 
 class StoreManager:
     def __init__(self):
@@ -54,20 +56,24 @@ class StoreManager:
     async def setup_store_manager_interface(self):
         self.store_manager_bus = await MessageBus(bus_type=BusType.SESSION).connect()
         store_manager_interface = StoreManagerInterface()
-        self.store_manager_bus.export('/io/FuriOS/StoreManager', store_manager_interface)
-        await self.store_manager_bus.request_name('io.FuriOS.StoreManager')
+        self.store_manager_bus.export(
+            "/io/FuriOS/StoreManager", store_manager_interface
+        )
+        await self.store_manager_bus.request_name("io.FuriOS.StoreManager")
         logger.info("Store Manager DBus interface is now running")
 
     async def setup(self):
         try:
-            self.android_store = AndroidStoreService(idle_callback=self.reset_idle_timer)
+            self.android_store = AndroidStoreService(
+                idle_callback=self.reset_idle_timer
+            )
             self.open_store = OpenStoreService(idle_callback=self.reset_idle_timer)
 
             setup_tasks = [
                 self.setup_store_manager_interface(),
                 self.reset_idle_timer(),
                 self.android_store.setup(),
-                self.open_store.setup()
+                self.open_store.setup(),
             ]
 
             results = await asyncio.gather(*setup_tasks)
@@ -76,15 +82,19 @@ class StoreManager:
             openstore_bus = results[3]
 
             android_disconnect = asyncio.create_task(android_bus.wait_for_disconnect())
-            openstore_disconnect = asyncio.create_task(openstore_bus.wait_for_disconnect())
+            openstore_disconnect = asyncio.create_task(
+                openstore_bus.wait_for_disconnect()
+            )
             shutdown_task = asyncio.create_task(self.shutdown_event.wait())
 
-            self._tasks.extend([android_disconnect, openstore_disconnect, shutdown_task])
+            self._tasks.extend(
+                [android_disconnect, openstore_disconnect, shutdown_task]
+            )
 
             try:
                 done, pending = await asyncio.wait(
                     [android_disconnect, openstore_disconnect, shutdown_task],
-                    return_when=asyncio.FIRST_COMPLETED
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
 
                 for task in pending:

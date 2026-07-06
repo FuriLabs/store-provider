@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 
-import subprocess
 import asyncio
-
-from loguru import logger
+import subprocess
 
 from dbus_fast.aio import MessageBus
 from dbus_fast.constants import BusType
+from loguru import logger
+
 
 def is_debian_package_installed(package_name):
     """
@@ -20,13 +20,16 @@ def is_debian_package_installed(package_name):
         bool: True if the package is installed, False otherwise
     """
     try:
-        subprocess.run(['dpkg', '-s', package_name],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        check=True)
+        subprocess.run(
+            ["dpkg", "-s", package_name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
         return True
     except subprocess.CalledProcessError:
         return False
+
 
 async def update_debian_cache():
     """
@@ -40,17 +43,21 @@ async def update_debian_cache():
     try:
         bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
 
-        introspection = await bus.introspect('org.aptkit', '/org/aptkit')
-        aptkit_proxy = bus.get_proxy_object('org.aptkit', '/org/aptkit', introspection)
-        aptkit_interface = aptkit_proxy.get_interface('org.aptkit')
+        introspection = await bus.introspect("org.aptkit", "/org/aptkit")
+        aptkit_proxy = bus.get_proxy_object("org.aptkit", "/org/aptkit", introspection)
+        aptkit_interface = aptkit_proxy.get_interface("org.aptkit")
 
         logger.info("Updating package cache")
         transaction_path = await aptkit_interface.call_update_cache()
         logger.info(f"Transaction started: {transaction_path}")
 
-        transaction_introspection = await bus.introspect('org.aptkit', transaction_path)
-        transaction_proxy = bus.get_proxy_object('org.aptkit', transaction_path, transaction_introspection)
-        transaction_interface = transaction_proxy.get_interface('org.aptkit.transaction')
+        transaction_introspection = await bus.introspect("org.aptkit", transaction_path)
+        transaction_proxy = bus.get_proxy_object(
+            "org.aptkit", transaction_path, transaction_introspection
+        )
+        transaction_interface = transaction_proxy.get_interface(
+            "org.aptkit.transaction"
+        )
 
         finished_future = asyncio.Future()
 
@@ -83,7 +90,9 @@ async def update_debian_cache():
                 logger.error(f"Cache update failed with exit state: {exit_state.value}")
                 ret = False
             else:
-                logger.success(f"Cache update completed successfully with exit state: {exit_state.value}")
+                logger.success(
+                    f"Cache update completed successfully with exit state: {exit_state.value}"
+                )
         except asyncio.TimeoutError:
             logger.error("Cache update timed out after 5 minutes")
             try:
@@ -99,6 +108,7 @@ async def update_debian_cache():
         if bus:
             bus.disconnect()
     return ret
+
 
 async def install_debian_package(package_name):
     """
@@ -116,18 +126,22 @@ async def install_debian_package(package_name):
     try:
         bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
 
-        introspection = await bus.introspect('org.aptkit', '/org/aptkit')
-        aptkit_proxy = bus.get_proxy_object('org.aptkit', '/org/aptkit', introspection)
-        aptkit_interface = aptkit_proxy.get_interface('org.aptkit')
+        introspection = await bus.introspect("org.aptkit", "/org/aptkit")
+        aptkit_proxy = bus.get_proxy_object("org.aptkit", "/org/aptkit", introspection)
+        aptkit_interface = aptkit_proxy.get_interface("org.aptkit")
 
         logger.info(f"Installing package: {package_name}")
 
         transaction_path = await aptkit_interface.call_install_packages([package_name])
         logger.info(f"Transaction started: {transaction_path}")
 
-        transaction_introspection = await bus.introspect('org.aptkit', transaction_path)
-        transaction_proxy = bus.get_proxy_object('org.aptkit', transaction_path, transaction_introspection)
-        transaction_interface = transaction_proxy.get_interface('org.aptkit.transaction')
+        transaction_introspection = await bus.introspect("org.aptkit", transaction_path)
+        transaction_proxy = bus.get_proxy_object(
+            "org.aptkit", transaction_path, transaction_introspection
+        )
+        transaction_interface = transaction_proxy.get_interface(
+            "org.aptkit.transaction"
+        )
 
         finished_future = asyncio.Future()
 
@@ -160,7 +174,9 @@ async def install_debian_package(package_name):
                 logger.error(f"Transaction failed with exit state: {exit_state.value}")
                 ret = False
             else:
-                logger.success(f"Transaction completed successfully with exit state: {exit_state.value}")
+                logger.success(
+                    f"Transaction completed successfully with exit state: {exit_state.value}"
+                )
         except asyncio.TimeoutError:
             logger.error("Transaction timed out after 5 minutes")
             try:

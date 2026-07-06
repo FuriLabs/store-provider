@@ -3,7 +3,9 @@
 # Copyright (C) 2025 Luis Garcia <git@luigi311.com>
 
 import os
+
 from loguru import logger
+
 
 async def download_file(session, url, output_path, headers=None):
     """
@@ -31,8 +33,8 @@ async def download_file(session, url, output_path, headers=None):
                 return False
 
             # Download the file in chunks
-            with open(output_path, 'wb') as f:
-                total = int(response.headers.get('content-length', 0))
+            with open(output_path, "wb") as f:
+                total = int(response.headers.get("content-length", 0))
                 downloaded = 0
                 chunk_size = 65536
 

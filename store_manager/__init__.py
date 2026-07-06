@@ -3,4 +3,4 @@
 
 from .store_manager import StoreManager
 
-__all__ = ['StoreManager']
+__all__ = ["StoreManager"]

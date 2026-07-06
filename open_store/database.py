@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 
-import aiosqlite
 import json
 import os
+
+import aiosqlite
 from loguru import logger
+
 
 async def init_app_database(db_path):
     """
@@ -52,6 +54,7 @@ async def init_app_database(db_path):
 
     return db
 
+
 async def init_installed_database(db_path):
     """
     Initialize the installed apps database.
@@ -84,6 +87,7 @@ async def init_installed_database(db_path):
 
     return db
 
+
 async def save_app_list(db, apps):
     """
     Save a list of apps to the database.
@@ -100,31 +104,34 @@ async def save_app_list(db, apps):
             await db.execute("DELETE FROM apps;")
 
             for app in apps:
-                await db.execute("""
+                await db.execute(
+                    """
                     INSERT INTO apps (
                         id, name, tagline, description, author, license, icon,
                         categories, architectures, publisher, types, framework,
                         channels, latest_version, published_date, updated_date, data
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    app.get('id', ''),
-                    app.get('name', ''),
-                    app.get('tagline', ''),
-                    app.get('description', ''),
-                    app.get('author', ''),
-                    app.get('license', ''),
-                    app.get('icon', ''),
-                    json.dumps(app.get('architectures', [])),
-                    json.dumps(app.get('architectures', [])),
-                    app.get('publisher', ''),
-                    json.dumps(app.get('types', [])),
-                    app.get('framework', ''),
-                    json.dumps(app.get('channels', [])),
-                    app.get('version', ''),
-                    app.get('published_date', ''),
-                    app.get('updated_date', ''),
-                    json.dumps(app)
-                ))
+                """,
+                    (
+                        app.get("id", ""),
+                        app.get("name", ""),
+                        app.get("tagline", ""),
+                        app.get("description", ""),
+                        app.get("author", ""),
+                        app.get("license", ""),
+                        app.get("icon", ""),
+                        json.dumps(app.get("architectures", [])),
+                        json.dumps(app.get("architectures", [])),
+                        app.get("publisher", ""),
+                        json.dumps(app.get("types", [])),
+                        app.get("framework", ""),
+                        json.dumps(app.get("channels", [])),
+                        app.get("version", ""),
+                        app.get("published_date", ""),
+                        app.get("updated_date", ""),
+                        json.dumps(app),
+                    ),
+                )
 
             await db.commit()
 
@@ -133,6 +140,7 @@ async def save_app_list(db, apps):
     except Exception as e:
         logger.error(f"Error saving apps to database: {e}")
         return False
+
 
 async def search_apps(db, query):
     """
@@ -155,25 +163,25 @@ async def search_apps(db, query):
             FROM apps
             WHERE (name LIKE ? OR tagline LIKE ?)
             """,
-            (search_query, search_query)
+            (search_query, search_query),
         ) as cursor:
             async for row in cursor:
                 app_id, name, tagline, description, data = row
                 app_data = json.loads(data)
 
                 app_info = {
-                    'id': app_id,
-                    'name': name,
-                    'summary': tagline,  # Use tagline is somewhat a summary, looks to be enough
-                    'description': description,
-                    'license': app_data.get('license', ''),
-                    'author': app_data.get('author', ''),
-                    'web_url': app_data.get('web_url', ''),
-                    'repository': 'OpenStore',
-                    'package': {
-                        'version': app_data.get('version', ''),
-                        'icon_url': app_data.get('icon', '')
-                    }
+                    "id": app_id,
+                    "name": name,
+                    "summary": tagline,  # Use tagline is somewhat a summary, looks to be enough
+                    "description": description,
+                    "license": app_data.get("license", ""),
+                    "author": app_data.get("author", ""),
+                    "web_url": app_data.get("web_url", ""),
+                    "repository": "OpenStore",
+                    "package": {
+                        "version": app_data.get("version", ""),
+                        "icon_url": app_data.get("icon", ""),
+                    },
                 }
                 results.append(app_info)
 
@@ -183,8 +191,10 @@ async def search_apps(db, query):
         logger.error(f"Error searching apps: {e}")
         return []
 
-async def save_installed_app(db, app_id, name, version, channel, architecture,
-                             install_date, app_dir):
+
+async def save_installed_app(
+    db, app_id, name, version, channel, architecture, install_date, app_dir
+):
     """
     Save installed app information to the database.
 
@@ -202,19 +212,14 @@ async def save_installed_app(db, app_id, name, version, channel, architecture,
         True if successful, False otherwise
     """
     try:
-        await db.execute("""
+        await db.execute(
+            """
             INSERT OR REPLACE INTO installed_apps
             (id, name, version, channel, architecture, install_date, app_dir)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            app_id,
-            name,
-            version,
-            channel,
-            architecture,
-            install_date,
-            app_dir
-        ))
+        """,
+            (app_id, name, version, channel, architecture, install_date, app_dir),
+        )
         await db.commit()
 
         logger.info(f"Saved installed app {app_id} to database")
@@ -222,6 +227,7 @@ async def save_installed_app(db, app_id, name, version, channel, architecture,
     except Exception as e:
         logger.error(f"Error saving installed app: {e}")
         return False
+
 
 async def remove_installed_app(db, app_id):
     """
@@ -244,6 +250,7 @@ async def remove_installed_app(db, app_id):
         logger.error(f"Error removing app from database: {e}")
         return False
 
+
 async def get_installed_apps(db):
     """
     Get list of installed apps from the database.
@@ -261,31 +268,38 @@ async def get_installed_apps(db):
             "SELECT id, name, version, channel, architecture, install_date, app_dir FROM installed_apps"
         ) as cursor:
             async for row in cursor:
-                app_id, name, version, channel, architecture, install_date, app_dir = row
+                app_id, name, version, channel, architecture, install_date, app_dir = (
+                    row
+                )
 
                 app_dir_exists = os.path.exists(app_dir) if app_dir else False
 
                 if app_dir_exists:
                     app_info = {
-                        'id': app_id,
-                        'name': name,
-                        'version': version,
-                        'channel': channel,
-                        'architecture': architecture,
-                        'install_date': install_date,
-                        'app_dir': app_dir
+                        "id": app_id,
+                        "name": name,
+                        "version": version,
+                        "channel": channel,
+                        "architecture": architecture,
+                        "install_date": install_date,
+                        "app_dir": app_dir,
                     }
                     installed_apps.append(app_info)
                 else:
-                    await db.execute("DELETE FROM installed_apps WHERE id = ?", (app_id,))
+                    await db.execute(
+                        "DELETE FROM installed_apps WHERE id = ?", (app_id,)
+                    )
                     await db.commit()
-                    logger.warning(f"Removed {app_id} from database as app directory is missing")
+                    logger.warning(
+                        f"Removed {app_id} from database as app directory is missing"
+                    )
 
         logger.info(f"Found {len(installed_apps)} installed apps")
         return installed_apps
     except Exception as e:
         logger.error(f"Error getting installed apps: {e}")
         return []
+
 
 async def get_installed_app(db, app_id):
     """
@@ -301,30 +315,36 @@ async def get_installed_app(db, app_id):
     try:
         async with db.execute(
             "SELECT id, name, version, channel, architecture, install_date, app_dir FROM installed_apps WHERE id = ?",
-            (app_id,)
+            (app_id,),
         ) as cursor:
             row = await cursor.fetchone()
 
             if row:
-                app_id, name, version, channel, architecture, install_date, app_dir = row
+                app_id, name, version, channel, architecture, install_date, app_dir = (
+                    row
+                )
 
                 app_dir_exists = os.path.exists(app_dir) if app_dir else False
 
                 if app_dir_exists:
                     app_info = {
-                        'id': app_id,
-                        'name': name,
-                        'version': version,
-                        'channel': channel,
-                        'architecture': architecture,
-                        'install_date': install_date,
-                        'app_dir': app_dir
+                        "id": app_id,
+                        "name": name,
+                        "version": version,
+                        "channel": channel,
+                        "architecture": architecture,
+                        "install_date": install_date,
+                        "app_dir": app_dir,
                     }
                     return app_info
                 else:
-                    await db.execute("DELETE FROM installed_apps WHERE id = ?", (app_id,))
+                    await db.execute(
+                        "DELETE FROM installed_apps WHERE id = ?", (app_id,)
+                    )
                     await db.commit()
-                    logger.warning(f"Removed {app_id} from database as app directory is missing")
+                    logger.warning(
+                        f"Removed {app_id} from database as app directory is missing"
+                    )
     except Exception as e:
         logger.error(f"Error getting installed app: {e}")
     return None

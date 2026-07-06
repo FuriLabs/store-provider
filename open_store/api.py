@@ -7,6 +7,7 @@ from loguru import logger
 OPENSTORE_API_URL = "https://open-store.io/api/v4/apps"
 HEADERS = {"X-Source": "StoreProvider"}
 
+
 async def fetch_app_list(session: aiohttp.ClientSession):
     """
     Fetch the list of apps from the OpenStore API.
@@ -31,26 +32,32 @@ async def fetch_app_list(session: aiohttp.ClientSession):
 
                 data = await response.json()
 
-                packages = data.get('data', {}).get('packages', [])
+                packages = data.get("data", {}).get("packages", [])
                 page_count += 1
 
                 for app in packages:
                     # Filter apps based on criteria:
                     # 1. Type must be "app" (not webapp/webapp+)
                     # 2. Should not be xenial-only channel
-                    channels = app.get('channels', [])
-                    if ("app" in app.get('types', []) and
-                        not any(wtype in app.get('types', []) for wtype in ["webapp", "webapp+"]) and
-                        not (len(channels) == 1 and channels[0] == "xenial")):
+                    channels = app.get("channels", [])
+                    if (
+                        "app" in app.get("types", [])
+                        and not any(
+                            wtype in app.get("types", [])
+                            for wtype in ["webapp", "webapp+"]
+                        )
+                        and not (len(channels) == 1 and channels[0] == "xenial")
+                    ):
                         apps.append(app)
 
-                next_url = data.get('data', {}).get('next')
+                next_url = data.get("data", {}).get("next")
         except Exception as e:
             logger.error(f"Error fetching apps: {e}")
             break
 
     logger.info(f"Fetched {len(apps)} apps in {page_count} pages")
     return apps
+
 
 async def get_app_details(session: aiohttp.ClientSession, app_id: str):
     """
@@ -73,11 +80,11 @@ async def get_app_details(session: aiohttp.ClientSession, app_id: str):
                 return None
 
             data = await response.json()
-            if not data.get('success'):
+            if not data.get("success"):
                 logger.error(f"API returned error: {data.get('message')}")
                 return None
 
-            return data.get('data')
+            return data.get("data")
     except Exception as e:
         logger.error(f"Error fetching app details: {e}")
         return None
