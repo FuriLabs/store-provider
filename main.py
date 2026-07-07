@@ -11,6 +11,7 @@ from loguru import logger
 
 from store_manager import StoreManager
 
+
 def configure_logger(args) -> None:
     # Remove default logger to configure our own
     logger.remove()
@@ -18,13 +19,18 @@ def configure_logger(args) -> None:
     if args.verbose:
         logger.add(sys.stdout)
 
+
 async def main():
     # Disable buffering for stdout and stderr so that logs are written immediately
     sys.stdout.reconfigure(line_buffering=True)
     sys.stderr.reconfigure(line_buffering=True)
 
-    parser = ArgumentParser(description="Run the Store Provider services", add_help=False)
-    parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose output.')
+    parser = ArgumentParser(
+        description="Run the Store Provider services", add_help=False
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose output."
+    )
     args = parser.parse_args()
     configure_logger(args)
 
@@ -49,8 +55,7 @@ async def main():
         main_task = asyncio.create_task(manager.setup())
         stop_task = asyncio.create_task(stop_event.wait())
         done, pending = await asyncio.wait(
-            [main_task, stop_task],
-            return_when=asyncio.FIRST_COMPLETED
+            [main_task, stop_task], return_when=asyncio.FIRST_COMPLETED
         )
 
         for task in pending:
@@ -72,6 +77,7 @@ async def main():
         logger.info("Main task cancelled")
     finally:
         logger.info("Main loop exited, goodbye!")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

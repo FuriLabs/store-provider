@@ -2,9 +2,11 @@
 # Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 # Copyright (C) 2025 Luis Garcia <git@luigi311.com>
 
-import aiosqlite
 import os
+
+import aiosqlite
 from loguru import logger
+
 
 async def init_database(database_path):
     """Initialize the SQLite database"""
@@ -44,6 +46,7 @@ async def init_database(database_path):
     logger.info("Database initialized")
 
     return db
+
 
 async def save_packages_to_db(db, packages):
     """Save packages to the database"""
@@ -90,6 +93,7 @@ async def save_packages_to_db(db, packages):
         logger.error(f"Error saving packages to database: {e}")
         return False
 
+
 async def ensure_populated(db, update_func):
     """Ensure the database is populated"""
     try:
@@ -109,6 +113,7 @@ async def ensure_populated(db, update_func):
         logger.error(f"Error checking database population: {e}")
         return False
 
+
 async def search_packages(db, query, json_decoder):
     """Search for packages in the database"""
     results = []
@@ -125,22 +130,22 @@ async def search_packages(db, query, json_decoder):
             rows = await cursor.fetchall()
             for row in rows:
                 app_info = {
-                    'repository': row[0],
-                    'id': row[1],
-                    'name': row[2],
-                    'summary': row[3],
-                    'description': row[4],
-                    'license': row[5],
-                    'categories': json_decoder(row[6]) if row[6] else None,
-                    'author': row[7],
-                    'web_url': row[8],
-                    'source_url': row[9],
-                    'tracker_url': row[10],
-                    'changelog_url': row[11],
-                    'donation_url': json_decoder(row[12]) if row[12] else None,
-                    'added_date': row[13],
-                    'last_updated': row[14],
-                    'package': json_decoder(row[15]) if row[15] else None
+                    "repository": row[0],
+                    "id": row[1],
+                    "name": row[2],
+                    "summary": row[3],
+                    "description": row[4],
+                    "license": row[5],
+                    "categories": json_decoder(row[6]) if row[6] else None,
+                    "author": row[7],
+                    "web_url": row[8],
+                    "source_url": row[9],
+                    "tracker_url": row[10],
+                    "changelog_url": row[11],
+                    "donation_url": json_decoder(row[12]) if row[12] else None,
+                    "added_date": row[13],
+                    "last_updated": row[14],
+                    "package": json_decoder(row[15]) if row[15] else None,
                 }
                 results.append(app_info)
         logger.info(f"Found {len(results)} results for query: {query}")
@@ -148,6 +153,7 @@ async def search_packages(db, query, json_decoder):
     except Exception as e:
         logger.error(f"Error searching packages: {e}")
         return []
+
 
 async def get_package_by_id(db, package_id, json_decoder):
     """Get package details by ID"""

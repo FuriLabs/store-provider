@@ -3,45 +3,75 @@
 # Copyright (C) 2025 Luis Garcia <git@luigi311.com>
 
 import asyncio
-import aiohttp
-import msgspec
 import json
 import os
 
-from dbus_fast.aio import MessageBus
-from dbus_fast.service import ServiceInterface, method, signal
+import aiohttp
+import msgspec
 from dbus_fast import BusType, Variant
+from dbus_fast.aio import MessageBus
+from dbus_fast.constants import PropertyAccess
+from dbus_fast.service import ServiceInterface, dbus_property, method, signal
 from loguru import logger
 
-from common.utils import download_file
-from android_store.database import (
-    init_database, save_packages_to_db, ensure_populated,
-    search_packages, get_package_by_id
+from android_store.andromeda import (
+    compare_installed_with_repo,
+    get_apps_info,
+    install_app,
+    ping_session_manager,
+    remove_app,
 )
 from android_store.api import (
-    download_index, process_indexes, read_repo_list,
+    download_index,
+    process_indexes,
+    read_repo_list,
 )
-from android_store.andromeda import (
-    ping_session_manager, install_app, remove_app,
-    get_apps_info, compare_installed_with_repo
+from android_store.database import (
+    ensure_populated,
+    get_package_by_id,
+    init_database,
+    save_packages_to_db,
+    search_packages,
 )
+from common.utils import download_file
 
 DEFAULT_REPO_CONFIG_DIR = "/usr/lib/store-provider/android_store/repos"
 CUSTOM_REPO_CONFIG_DIR = "/etc/store-provider/android-store/repos"
 DATABASE = os.path.expanduser("~/.cache/store-provider/android-store/android-store.db")
 CACHE_DIR = os.path.expanduser("~/.cache/store-provider/android-store/repo")
-DOWNLOAD_CACHE_DIR = os.path.expanduser("~/.cache/store-provider/android-store/downloads")
+DOWNLOAD_CACHE_DIR = os.path.expanduser(
+    "~/.cache/store-provider/android-store/downloads"
+)
+
 
 class FDroidInterface(ServiceInterface):
     def __init__(self, idle_callback=None):
         logger.info("Initializing F-Droid store daemon")
-        super().__init__('io.FuriOS.AndroidStore.fdroid')
+        super().__init__("io.FuriOS.AndroidStore.fdroid")
         self.session = None
         self.db = None
         self.json_enc = msgspec.json.Encoder()
 
         self.idle_callback = idle_callback
         self.idle_timer = None
+
+        # Progress tracking properties
+        self.props = {
+            "DownloadProgress": Variant(
+                "a{sv}",
+                {
+                    "package_id": Variant("s", ""),
+                    "progress": Variant("i", 0),
+                },
+            ),
+            "InstallStatus": Variant(
+                "a{sv}",
+                {
+                    "package_id": Variant("s", ""),
+                    "status": Variant("s", ""),
+                },
+            ),
+        }
 
         # Task queue implementation
         self._task_queue = asyncio.Queue()
@@ -130,13 +160,17 @@ class FDroidInterface(ServiceInterface):
         repo_success = False
 
         for repo_url in repos:
-            logger.info(f"Downloading {config_file} index from {repo_url} (from {repo_dir})")
+            logger.info(
+                f"Downloading {config_file} index from {repo_url} (from {repo_dir})"
+            )
             if await download_index(self.session, repo_url, config_file, CACHE_DIR):
                 logger.info(f"Successfully downloaded {config_file}")
                 repo_success = True
                 break
             else:
-                logger.error(f"Failed to download from {repo_url}, trying next mirror...")
+                logger.error(
+                    f"Failed to download from {repo_url}, trying next mirror..."
+                )
 
         if not repo_success:
             logger.error(f"Failed to download {config_file} from all mirrors")
@@ -147,15 +181,22 @@ class FDroidInterface(ServiceInterface):
         await self.ensure_session()
         all_repo_files = set()
 
-        if os.path.exists(CUSTOM_REPO_CONFIG_DIR) and os.path.isdir(CUSTOM_REPO_CONFIG_DIR):
+        if os.path.exists(CUSTOM_REPO_CONFIG_DIR) and os.path.isdir(
+            CUSTOM_REPO_CONFIG_DIR
+        ):
             for config_file in os.listdir(CUSTOM_REPO_CONFIG_DIR):
                 if os.path.isfile(os.path.join(CUSTOM_REPO_CONFIG_DIR, config_file)):
                     all_repo_files.add(config_file)
                     logger.info(f"Found repository in custom dir: {config_file}")
 
-        if os.path.exists(DEFAULT_REPO_CONFIG_DIR) and os.path.isdir(DEFAULT_REPO_CONFIG_DIR):
+        if os.path.exists(DEFAULT_REPO_CONFIG_DIR) and os.path.isdir(
+            DEFAULT_REPO_CONFIG_DIR
+        ):
             for config_file in os.listdir(DEFAULT_REPO_CONFIG_DIR):
-                if os.path.isfile(os.path.join(DEFAULT_REPO_CONFIG_DIR, config_file)) and config_file not in all_repo_files:
+                if (
+                    os.path.isfile(os.path.join(DEFAULT_REPO_CONFIG_DIR, config_file))
+                    and config_file not in all_repo_files
+                ):
                     all_repo_files.add(config_file)
                     logger.info(f"Found repository in default dir: {config_file}")
 
@@ -167,7 +208,9 @@ class FDroidInterface(ServiceInterface):
             else:
                 repo_dir = DEFAULT_REPO_CONFIG_DIR
 
-            tasks.append(asyncio.create_task(self.process_repo_file(config_file, repo_dir)))
+            tasks.append(
+                asyncio.create_task(self.process_repo_file(config_file, repo_dir))
+            )
 
         results = await asyncio.gather(*tasks)
         overall_success = any(results)
@@ -185,7 +228,7 @@ class FDroidInterface(ServiceInterface):
         return await compare_installed_with_repo(self.db, msgspec.json.decode)
 
     @method()
-    async def Search(self, query: 's') -> 's':
+    async def Search(self, query: "s") -> "s":
         async def _search_task():
             logger.info(f"Searching for {query}")
             results = []
@@ -198,18 +241,20 @@ class FDroidInterface(ServiceInterface):
 
             results = await search_packages(self.db, query, msgspec.json.decode)
             return json.dumps(results)
+
         return await _search_task()
 
     @method()
-    async def UpdateCache(self) -> 'b':
+    async def UpdateCache(self) -> "b":
         async def _update_cache_task():
             if not await ping_session_manager():
                 return False
             return await self.update_cache()
+
         return await self._queue_task(_update_cache_task)
 
     @method()
-    async def Install(self, package_id: 's') -> 'b':
+    async def Install(self, package_id: "s") -> "b":
         async def _install_task():
             logger.info(f"Installing package {package_id}")
 
@@ -220,7 +265,9 @@ class FDroidInterface(ServiceInterface):
                 return False
 
             try:
-                package_info = await get_package_by_id(self.db, package_id, msgspec.json.decode)
+                package_info = await get_package_by_id(
+                    self.db, package_id, msgspec.json.decode
+                )
                 if not package_info:
                     logger.error(f"Package {package_id} not found")
                     return False
@@ -228,13 +275,22 @@ class FDroidInterface(ServiceInterface):
                 os.makedirs(DOWNLOAD_CACHE_DIR, exist_ok=True)
                 await self.ensure_session()
 
-                filepath = os.path.join(DOWNLOAD_CACHE_DIR, package_info['apk_name'])
-                result = await download_file(self.session, package_info['download_url'], filepath)
+                self._emit_install_status(package_id, "downloading")
+                filepath = os.path.join(DOWNLOAD_CACHE_DIR, package_info["apk_name"])
+                result = await download_file(
+                    self.session,
+                    package_info["download_url"],
+                    filepath,
+                    progress_callback=lambda p: self._emit_download_progress(
+                        package_id, p
+                    ),
+                )
 
                 if not result:
                     return False
 
                 logger.info(f"APK downloaded to: {filepath}")
+                self._emit_install_status(package_id, "installing")
                 success = await install_app(filepath)
                 os.remove(filepath)
 
@@ -247,14 +303,59 @@ class FDroidInterface(ServiceInterface):
             except Exception as e:
                 logger.error(f"Installation failed: {e}")
                 return False
+
         return await self._queue_task(_install_task)
 
     @signal()
-    def AppInstalled(self, package_id: 's') -> 's':
+    def AppInstalled(self, package_id: "s") -> "s":
         return package_id
 
+    @signal()
+    def DownloadProgressChanged(self, package_id: "s", progress: "i") -> "si":
+        return package_id, progress
+
+    @signal()
+    def InstallStatusChanged(self, package_id: "s", status: "s") -> "ss":
+        return package_id, status
+
+    def _emit_download_progress(self, package_id: str, progress: int):
+        """Emit DownloadProgressChanged signal and update DownloadProgress property."""
+        self.props["DownloadProgress"] = Variant(
+            "a{sv}",
+            {
+                "package_id": Variant("s", package_id),
+                "progress": Variant("i", progress),
+            },
+        )
+        self.DownloadProgressChanged(package_id, progress)
+        self.emit_properties_changed(
+            {"DownloadProgress": self.props["DownloadProgress"].value}, []
+        )
+
+    def _emit_install_status(self, package_id: str, status: str):
+        """Emit InstallStatusChanged signal and update InstallStatus property."""
+        self.props["InstallStatus"] = Variant(
+            "a{sv}",
+            {
+                "package_id": Variant("s", package_id),
+                "status": Variant("s", status),
+            },
+        )
+        self.InstallStatusChanged(package_id, status)
+        self.emit_properties_changed(
+            {"InstallStatus": self.props["InstallStatus"].value}, []
+        )
+
+    @dbus_property(access=PropertyAccess.READ)
+    def DownloadProgress(self) -> "a{sv}":
+        return self.props["DownloadProgress"].value
+
+    @dbus_property(access=PropertyAccess.READ)
+    def InstallStatus(self) -> "a{sv}":
+        return self.props["InstallStatus"].value
+
     @method()
-    async def GetRepositories(self) -> 'a(ss)':
+    async def GetRepositories(self) -> "a(ss)":
         async def _get_repositories_task():
             logger.info("Getting repositories")
             repositories = []
@@ -264,35 +365,54 @@ class FDroidInterface(ServiceInterface):
 
             repo_files = {}  # filename -> (repo_dir, url)
 
-            if os.path.exists(CUSTOM_REPO_CONFIG_DIR) and os.path.isdir(CUSTOM_REPO_CONFIG_DIR):
+            if os.path.exists(CUSTOM_REPO_CONFIG_DIR) and os.path.isdir(
+                CUSTOM_REPO_CONFIG_DIR
+            ):
                 for repo_file in os.listdir(CUSTOM_REPO_CONFIG_DIR):
                     repo_path = os.path.join(CUSTOM_REPO_CONFIG_DIR, repo_file)
                     if os.path.isfile(repo_path):
-                        with open(repo_path, 'r', encoding='utf-8') as f:
-                            lines = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+                        with open(repo_path, "r", encoding="utf-8") as f:
+                            lines = [
+                                line.strip()
+                                for line in f
+                                if line.strip() and not line.startswith("#")
+                            ]
                             if lines:
-                                repo_files[repo_file] = (CUSTOM_REPO_CONFIG_DIR, lines[0])
+                                repo_files[repo_file] = (
+                                    CUSTOM_REPO_CONFIG_DIR,
+                                    lines[0],
+                                )
 
-            if os.path.exists(DEFAULT_REPO_CONFIG_DIR) and os.path.isdir(DEFAULT_REPO_CONFIG_DIR):
+            if os.path.exists(DEFAULT_REPO_CONFIG_DIR) and os.path.isdir(
+                DEFAULT_REPO_CONFIG_DIR
+            ):
                 for repo_file in os.listdir(DEFAULT_REPO_CONFIG_DIR):
                     if repo_file in repo_files:
                         continue
 
                     repo_path = os.path.join(DEFAULT_REPO_CONFIG_DIR, repo_file)
                     if os.path.isfile(repo_path):
-                        with open(repo_path, 'r', encoding='utf-8') as f:
-                            lines = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+                        with open(repo_path, "r", encoding="utf-8") as f:
+                            lines = [
+                                line.strip()
+                                for line in f
+                                if line.strip() and not line.startswith("#")
+                            ]
                             if lines:
-                                repo_files[repo_file] = (DEFAULT_REPO_CONFIG_DIR, lines[0])
+                                repo_files[repo_file] = (
+                                    DEFAULT_REPO_CONFIG_DIR,
+                                    lines[0],
+                                )
 
             for repo_file, (repo_dir, repo_url) in repo_files.items():
                 source = "custom" if repo_dir == CUSTOM_REPO_CONFIG_DIR else "default"
                 repositories.append([f"{repo_file} ({source})", repo_url])
             return repositories
+
         return await _get_repositories_task()
 
     @method()
-    async def GetUpgradable(self) -> 'aa{sv}':
+    async def GetUpgradable(self) -> "aa{sv}":
         async def _get_upgradable_task():
             logger.info("Getting upgradable")
             upgradable = []
@@ -303,21 +423,24 @@ class FDroidInterface(ServiceInterface):
             raw_upgradable = await self.get_upgradable_packages()
             for pkg in raw_upgradable:
                 upgradable_info = {
-                    'id': Variant('s', pkg['id']),
-                    'name': Variant('s', pkg.get('name', pkg['id'])),
-                    'packageName': Variant('s', pkg['id']),
-                    'currentVersion': Variant('s', pkg['current_version']),
-                    'availableVersion': Variant('s', pkg['available_version']),
-                    'repository': Variant('s', pkg['repo_url']),
-                    'package': Variant('s', json.dumps(pkg['packageInfo']))
+                    "id": Variant("s", pkg["id"]),
+                    "name": Variant("s", pkg.get("name", pkg["id"])),
+                    "packageName": Variant("s", pkg["id"]),
+                    "currentVersion": Variant("s", pkg["current_version"]),
+                    "availableVersion": Variant("s", pkg["available_version"]),
+                    "repository": Variant("s", pkg["repo_url"]),
+                    "package": Variant("s", json.dumps(pkg["packageInfo"])),
                 }
                 upgradable.append(upgradable_info)
-                logger.info(f"{upgradable_info['packageName'].value} {upgradable_info['name'].value} {upgradable_info['currentVersion'].value} {upgradable_info['availableVersion'].value}")
+                logger.info(
+                    f"{upgradable_info['packageName'].value} {upgradable_info['name'].value} {upgradable_info['currentVersion'].value} {upgradable_info['availableVersion'].value}"
+                )
             return upgradable
+
         return await _get_upgradable_task()
 
     @method()
-    async def UpgradePackages(self, packages: 'as') -> 'b':
+    async def UpgradePackages(self, packages: "as") -> "b":
         async def _upgrade_packages_task():
             logger.info(f"Upgrading packages {packages}")
 
@@ -328,7 +451,7 @@ class FDroidInterface(ServiceInterface):
             upgrade_list = packages
 
             if not upgrade_list:
-                upgrade_list = [pkg['id'] for pkg in upgradables]
+                upgrade_list = [pkg["id"] for pkg in upgradables]
                 logger.info(f"Upgrading all available packages: {upgrade_list}")
 
             if not upgrade_list:
@@ -340,20 +463,29 @@ class FDroidInterface(ServiceInterface):
 
             for package_id in upgrade_list:
                 for pkg in upgradables:
-                    if pkg['id'] == package_id:
+                    if pkg["id"] == package_id:
                         logger.info(f"Installing upgrade for {package_id}")
                         try:
-                            package_info = pkg['packageInfo']
-                            download_url = package_info['download_url']
-                            apk_name = package_info['apk_name']
+                            package_info = pkg["packageInfo"]
+                            download_url = package_info["download_url"]
+                            apk_name = package_info["apk_name"]
                             filepath = os.path.join(DOWNLOAD_CACHE_DIR, apk_name)
 
-                            result = await download_file(self.session, download_url, filepath)
+                            self._emit_install_status(package_id, "downloading")
+                            result = await download_file(
+                                self.session,
+                                download_url,
+                                filepath,
+                                progress_callback=lambda p: (
+                                    self._emit_download_progress(package_id, p)
+                                ),
+                            )
                             if not result:
                                 logger.error(f"Failed to download {package_id}")
                                 continue
 
                             logger.info(f"APK downloaded to: {filepath}")
+                            self._emit_install_status(package_id, "installing")
                             success = await install_app(filepath)
                             os.remove(filepath)
 
@@ -367,36 +499,40 @@ class FDroidInterface(ServiceInterface):
                             return False
             await self.cleanup_session()
             return True
+
         return await self._queue_task(_upgrade_packages_task)
 
     @method()
-    async def RemoveRepository(self, repo_id: 's') -> 'b':
+    async def RemoveRepository(self, repo_id: "s") -> "b":
         async def _remove_repository_task():
             logger.info(f"Removing repository {repo_id}")
 
             if not await ping_session_manager():
                 return False
             return True
+
         return await self._queue_task(_remove_repository_task)
 
     @method()
-    async def GetInstalledApps(self) -> 'aa{sv}':
+    async def GetInstalledApps(self) -> "aa{sv}":
         async def _get_installed_apps_task():
             logger.info("Getting installed apps")
 
             if not await ping_session_manager():
                 return []
             return await get_apps_info()
+
         return await _get_installed_apps_task()
 
     @method()
-    async def UninstallApp(self, package_name: 's') -> 'b':
+    async def UninstallApp(self, package_name: "s") -> "b":
         async def _uninstall_app_task():
             logger.info(f"Uninstalling app {package_name}")
 
             if not await ping_session_manager():
                 return False
             return await remove_app(package_name)
+
         return await self._queue_task(_uninstall_app_task)
 
     async def cleanup(self):
@@ -414,6 +550,7 @@ class FDroidInterface(ServiceInterface):
         if self.db:
             await self.db.close()
 
+
 class AndroidStoreService:
     def __init__(self, idle_callback=None):
         logger.info("Initializing Android store service")
@@ -425,14 +562,12 @@ class AndroidStoreService:
         """Set up the D-Bus service"""
         self.bus = await MessageBus(bus_type=BusType.SESSION).connect()
 
-        self.fdroid_interface = FDroidInterface(
-            idle_callback=self.idle_callback
-        )
+        self.fdroid_interface = FDroidInterface(idle_callback=self.idle_callback)
 
         # Initialize the database
         await self.fdroid_interface.init_db()
-        self.bus.export('/fdroid', self.fdroid_interface)
-        await self.bus.request_name('io.FuriOS.AndroidStore')
+        self.bus.export("/fdroid", self.fdroid_interface)
+        await self.bus.request_name("io.FuriOS.AndroidStore")
 
         return self.bus
 

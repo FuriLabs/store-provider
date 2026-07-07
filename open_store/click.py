@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
 
-import platform
-import tarfile
 import glob
-import stat
-import os
 import io
+import os
+import platform
+import stat
+import tarfile
+
+from loguru import logger
 
 from debian import arfile
-from loguru import logger
+
 
 def extract_click_package(click_path, target_dir):
     """
@@ -28,11 +30,11 @@ def extract_click_package(click_path, target_dir):
         logger.info(f"Extracting click package: {click_path}")
 
         ar_archive = arfile.ArFile(click_path)
-        data_member = ar_archive.getmember('data.tar.gz')
+        data_member = ar_archive.getmember("data.tar.gz")
         member_data = data_member.read()
 
         with io.BytesIO(member_data) as data_stream:
-            with tarfile.open(fileobj=data_stream, mode='r:gz') as tar:
+            with tarfile.open(fileobj=data_stream, mode="r:gz") as tar:
                 tar.extractall(path=target_dir)
 
         logger.info(f"Extracted to {target_dir}")
@@ -41,6 +43,7 @@ def extract_click_package(click_path, target_dir):
         logger.error(f"Error extracting click package: {e}")
         return None
 
+
 def get_system_architecture():
     """
     Get the current system architecture and map it to OpenStore architecture names.
@@ -48,12 +51,9 @@ def get_system_architecture():
     Returns:
         String representation of the architecture (arm64, armhf, amd64, or all)
     """
-    arch_mapping = {
-        'aarch64': 'arm64',
-        'armv7l': 'armhf',
-        'x86_64': 'amd64'
-    }
-    return arch_mapping.get(platform.machine(), 'all')
+    arch_mapping = {"aarch64": "arm64", "armv7l": "armhf", "x86_64": "amd64"}
+    return arch_mapping.get(platform.machine(), "all")
+
 
 def find_compatible_download(downloads, system_arch, prefer_focal=True):
     """
@@ -69,15 +69,21 @@ def find_compatible_download(downloads, system_arch, prefer_focal=True):
     """
     if prefer_focal:
         for download in downloads:
-            if (download.get('channel') == 'focal' and
-                (download.get('architecture') == system_arch or download.get('architecture') == 'all')):
+            if download.get("channel") == "focal" and (
+                download.get("architecture") == system_arch
+                or download.get("architecture") == "all"
+            ):
                 return download
 
     for download in downloads:
-        if download.get('architecture') == system_arch or download.get('architecture') == 'all':
+        if (
+            download.get("architecture") == system_arch
+            or download.get("architecture") == "all"
+        ):
             return download
 
     return None
+
 
 async def download_file(session, url, output_path):
     """
@@ -98,8 +104,8 @@ async def download_file(session, url, output_path):
                 return False
 
             # Download the file
-            with open(output_path, 'wb') as f:
-                total = int(response.headers.get('content-length', 0))
+            with open(output_path, "wb") as f:
+                total = int(response.headers.get("content-length", 0))
                 downloaded = 0
                 chunk_size = 65536
 
@@ -115,6 +121,7 @@ async def download_file(session, url, output_path):
         if os.path.exists(output_path):
             os.remove(output_path)
         return False
+
 
 def process_desktop_files(app_id, app_dir):
     """
@@ -135,7 +142,9 @@ def process_desktop_files(app_id, app_dir):
     """
     results = []
 
-    store_apps_dir = os.path.expanduser("~/.local/store-provider/open-store/applications")
+    store_apps_dir = os.path.expanduser(
+        "~/.local/store-provider/open-store/applications"
+    )
     system_apps_dir = os.path.expanduser("~/.local/share/applications")
     scripts_dir = os.path.expanduser("~/.local/store-provider/open-store/scripts")
 
@@ -154,65 +163,89 @@ def process_desktop_files(app_id, app_dir):
             desktop_content = {}
             current_section = None
 
-            with open(desktop_file, 'r', encoding='utf-8') as f:
+            with open(desktop_file, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if not line or line.startswith('#'):
+                    if not line or line.startswith("#"):
                         continue
 
-                    if line.startswith('[') and line.endswith(']'):
+                    if line.startswith("[") and line.endswith("]"):
                         current_section = line[1:-1]
                         desktop_content[current_section] = {}
-                    elif '=' in line and current_section:
-                        key, value = line.split('=', 1)
+                    elif "=" in line and current_section:
+                        key, value = line.split("=", 1)
                         desktop_content[current_section][key.strip()] = value.strip()
 
-            if 'Desktop Entry' not in desktop_content:
-                logger.warning(f"Invalid desktop file (no Desktop Entry section): {desktop_file}")
+            if "Desktop Entry" not in desktop_content:
+                logger.warning(
+                    f"Invalid desktop file (no Desktop Entry section): {desktop_file}"
+                )
                 continue
 
             desktop_filename = os.path.basename(desktop_file)
             script_basename = f"{app_id}_{os.path.splitext(desktop_filename)[0]}"
             script_path = os.path.join(scripts_dir, f"{script_basename}.sh")
-            store_desktop_path = os.path.join(store_apps_dir, f"{app_id}_{desktop_filename}")
-            system_desktop_path = os.path.join(system_apps_dir, f"{app_id}_{desktop_filename}")
+            store_desktop_path = os.path.join(
+                store_apps_dir, f"{app_id}_{desktop_filename}"
+            )
+            system_desktop_path = os.path.join(
+                system_apps_dir, f"{app_id}_{desktop_filename}"
+            )
 
-            entry = desktop_content['Desktop Entry']
-            name = entry.get('Name', app_id)
-            exec_cmd = entry.get('Exec', '')
+            entry = desktop_content["Desktop Entry"]
+            name = entry.get("Name", app_id)
+            exec_cmd = entry.get("Exec", "")
 
             # strip trailing "%u" if present
             exec_cmd = exec_cmd.rstrip()
-            if exec_cmd.endswith('%u'):
+            if exec_cmd.endswith("%u"):
                 exec_cmd = exec_cmd[:-2].rstrip()
 
-            icon = entry.get('Icon', '')
+            icon = entry.get("Icon", "")
 
-            with open(script_path, 'w', encoding='utf-8') as f:
+            with open(script_path, "w", encoding="utf-8") as f:
                 f.write("#!/bin/bash\n\n")
-                f.write("# Script generated by OpenStore to launch app with the right enrionment variables\n\n")
-                f.write("TRIPLET=$(awk 'BEGIN{FS=\"[ ()-]\"; \"bash --version\"|getline; OFS=\"-\"; if (/bash/) print $9,$11,$12}')\n\n")
+                f.write(
+                    "# Script generated by OpenStore to launch app with the right enrionment variables\n\n"
+                )
+                f.write(
+                    'TRIPLET=$(awk \'BEGIN{FS="[ ()-]"; "bash --version"|getline; OFS="-"; if (/bash/) print $9,$11,$12}\')\n\n'
+                )
                 f.write(f"cd {app_dir}\n\n")
-                f.write("export LD_LIBRARY_PATH=${PWD}/../lib:${PWD}/lib:${PWD}/usr/lib:${PWD}/lib/${TRIPLET}:${PWD}/usr/lib/${TRIPLET}:/usr/lib/${TRIPLET}/furios-lomiri-app-support/lib:${LD_LIBRARY_PATH}\n\n")
-                f.write("export PATH=${PWD}:${PWD}/../bin:${PWD}/bin:${PWD}/usr/bin:${PWD}/lib/bin:${PWD}/lib/${TRIPLET}/bin:/usr/lib/${TRIPLET}/furios-lomiri-app-support/bin:${PATH}\n\n")
-                f.write("export QML2_IMPORT_PATH=${PWD}/lib:${PWD}/lib/${TRIPLET}:${PWD}/usr/lib/:${PWD}/usr/lib/${TRIPLET}/\n\n")
+                f.write(
+                    "export LD_LIBRARY_PATH=${PWD}/../lib:${PWD}/lib:${PWD}/usr/lib:${PWD}/lib/${TRIPLET}:${PWD}/usr/lib/${TRIPLET}:/usr/lib/${TRIPLET}/furios-lomiri-app-support/lib:${LD_LIBRARY_PATH}\n\n"
+                )
+                f.write(
+                    "export PATH=${PWD}:${PWD}/../bin:${PWD}/bin:${PWD}/usr/bin:${PWD}/lib/bin:${PWD}/lib/${TRIPLET}/bin:/usr/lib/${TRIPLET}/furios-lomiri-app-support/bin:${PATH}\n\n"
+                )
+                f.write(
+                    "export QML2_IMPORT_PATH=${PWD}/lib:${PWD}/lib/${TRIPLET}:${PWD}/usr/lib/:${PWD}/usr/lib/${TRIPLET}/\n\n"
+                )
                 f.write("export XDG_CACHE_HOME=$HOME/.cache/\n\n")
                 f.write("export UITK_ICON_THEME=suru\n\n")
                 f.write(f"export APP_ID={app_id}\n\n")
-                f.write(f"gsettings set io.furios.phosh.shell appid '{app_id}_{desktop_filename}'\n\n")
+                f.write(
+                    f"gsettings set io.furios.phosh.shell appid '{app_id}_{desktop_filename}'\n\n"
+                )
                 f.write(f"{exec_cmd}\n")
 
-            os.chmod(script_path, os.stat(script_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            os.chmod(
+                script_path,
+                os.stat(script_path).st_mode
+                | stat.S_IXUSR
+                | stat.S_IXGRP
+                | stat.S_IXOTH,
+            )
 
-            entry['Path'] = app_dir
-            entry['Exec'] = script_path
+            entry["Path"] = app_dir
+            entry["Exec"] = script_path
 
-            if icon and not icon.startswith('/') and not icon.startswith('$'):
+            if icon and not icon.startswith("/") and not icon.startswith("$"):
                 icon_path = os.path.join(app_dir, icon)
                 if os.path.exists(icon_path):
-                    entry['Icon'] = icon_path
+                    entry["Icon"] = icon_path
 
-            with open(store_desktop_path, 'w', encoding='utf-8') as f:
+            with open(store_desktop_path, "w", encoding="utf-8") as f:
                 for section, keys in desktop_content.items():
                     f.write(f"[{section}]\n")
                     for key, value in keys.items():
@@ -224,15 +257,18 @@ def process_desktop_files(app_id, app_dir):
             os.symlink(store_desktop_path, system_desktop_path)
 
             logger.info(f"Created wrapper script and desktop file for {name}")
-            results.append({
-                'name': name,
-                'script_path': script_path,
-                'store_desktop_path': store_desktop_path,
-                'system_desktop_path': system_desktop_path
-            })
+            results.append(
+                {
+                    "name": name,
+                    "script_path": script_path,
+                    "store_desktop_path": store_desktop_path,
+                    "system_desktop_path": system_desktop_path,
+                }
+            )
         except Exception as e:
             logger.error(f"Error processing desktop file {desktop_file}: {e}")
     return results
+
 
 def cleanup_desktop_files(app_id):
     """
@@ -246,7 +282,9 @@ def cleanup_desktop_files(app_id):
     """
 
     try:
-        store_apps_dir = os.path.expanduser("~/.local/store-provider/open-store/applications")
+        store_apps_dir = os.path.expanduser(
+            "~/.local/store-provider/open-store/applications"
+        )
         system_apps_dir = os.path.expanduser("~/.local/share/applications")
         scripts_dir = os.path.expanduser("~/.local/store-provider/open-store/scripts")
 
