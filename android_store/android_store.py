@@ -5,6 +5,7 @@
 import asyncio
 import json
 import os
+from time import monotonic
 
 import aiohttp
 import msgspec
@@ -54,6 +55,7 @@ class FDroidInterface(ServiceInterface):
 
         self.idle_callback = idle_callback
         self.idle_timer = None
+        self._last_idle_reset = 0.0
 
         # Progress tracking properties
         self.props = {
@@ -110,8 +112,16 @@ class FDroidInterface(ServiceInterface):
             logger.info("Task processor started")
 
     def _reset_idle_timer(self):
-        """Reset the idle timer when activity occurs"""
+        """Reset the idle timer when activity occurs.
+
+        Throttled because progress emissions during long installs can
+        fire many times per second.
+        """
         if self.idle_callback:
+            now = monotonic()
+            if now - self._last_idle_reset < 10:
+                return
+            self._last_idle_reset = now
             asyncio.create_task(self.idle_callback())
 
     async def _process_task_queue(self):
@@ -331,6 +341,9 @@ class FDroidInterface(ServiceInterface):
         self.emit_properties_changed(
             {"DownloadProgress": self.props["DownloadProgress"].value}, []
         )
+        # Long installs emit progress without any incoming D-Bus calls;
+        # keep the idle shutdown from killing the service mid-install
+        self._reset_idle_timer()
 
     def _emit_install_status(self, package_id: str, status: str):
         """Emit InstallStatusChanged signal and update InstallStatus property."""
@@ -345,6 +358,7 @@ class FDroidInterface(ServiceInterface):
         self.emit_properties_changed(
             {"InstallStatus": self.props["InstallStatus"].value}, []
         )
+        self._reset_idle_timer()
 
     @dbus_property(access=PropertyAccess.READ)
     def DownloadProgress(self) -> "a{sv}":

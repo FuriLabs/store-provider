@@ -31,9 +31,13 @@ def is_debian_package_installed(package_name):
         return False
 
 
-async def update_debian_cache():
+async def update_debian_cache(progress_callback=None):
     """
     Update APT package cache using AptKit D-Bus service
+
+    Args:
+        progress_callback (callable, optional): Called with the transaction
+            progress percentage (0-100) as it changes
 
     Returns:
         bool: True if cache update was successful, False otherwise
@@ -64,7 +68,13 @@ async def update_debian_cache():
         def on_property_changed(property_name, value):
             logger.info(f"Property changed: {property_name} = {value}")
             if property_name == "Progress":
-                logger.info(f"Progress: {value}%")
+                logger.info(f"Progress: {value.value}%")
+                # AptKit reports 101 when the progress is unknown
+                if progress_callback and value.value <= 100:
+                    try:
+                        progress_callback(value.value)
+                    except Exception as e:
+                        logger.error(f"Error in progress callback: {e}")
             elif property_name == "Status":
                 logger.info(f"Status: {value}")
             elif property_name == "ExitState":
@@ -110,12 +120,14 @@ async def update_debian_cache():
     return ret
 
 
-async def install_debian_package(package_name):
+async def install_debian_package(package_name, progress_callback=None):
     """
     Install a Debian package using AptKit D-Bus service
 
     Args:
         package_name (str): The name of the package to install
+        progress_callback (callable, optional): Called with the transaction
+            progress percentage (0-100) as it changes
 
     Returns:
         bool: True if installation was successful, False otherwise
@@ -149,7 +161,13 @@ async def install_debian_package(package_name):
             logger.info(f"Property changed: {property_name} = {value}")
 
             if property_name == "Progress":
-                logger.info(f"Progress: {value}%")
+                logger.info(f"Progress: {value.value}%")
+                # AptKit reports 101 when the progress is unknown
+                if progress_callback and value.value <= 100:
+                    try:
+                        progress_callback(value.value)
+                    except Exception as e:
+                        logger.error(f"Error in progress callback: {e}")
             elif property_name == "Status":
                 logger.info(f"Status: {value}")
             elif property_name == "ExitState":
@@ -169,7 +187,7 @@ async def install_debian_package(package_name):
         await transaction_interface.call_run()
 
         try:
-            exit_state = await asyncio.wait_for(finished_future, timeout=300)
+            exit_state = await asyncio.wait_for(finished_future, timeout=600)
             if exit_state.value != "exit-success":
                 logger.error(f"Transaction failed with exit state: {exit_state.value}")
                 ret = False
@@ -178,7 +196,7 @@ async def install_debian_package(package_name):
                     f"Transaction completed successfully with exit state: {exit_state.value}"
                 )
         except asyncio.TimeoutError:
-            logger.error("Transaction timed out after 5 minutes")
+            logger.error("Transaction timed out after 10 minutes")
             try:
                 await transaction_interface.call_cancel()
                 logger.error("Transaction cancelled")

@@ -6,7 +6,7 @@ import json
 import os
 import shutil
 import tempfile
-from time import time
+from time import monotonic, time
 
 import aiohttp
 from dbus_fast import BusType, Variant
@@ -62,6 +62,7 @@ class OpenStoreInterface(ServiceInterface):
 
         self.idle_callback = idle_callback
         self.idle_timer = None
+        self._last_idle_reset = 0.0
 
         # Progress tracking properties
         self.props = {
@@ -125,8 +126,16 @@ class OpenStoreInterface(ServiceInterface):
             logger.info("Task processor started")
 
     def _reset_idle_timer(self):
-        """Reset the idle timer when activity occurs"""
+        """Reset the idle timer when activity occurs.
+
+        Throttled because progress emissions during long installs can
+        fire many times per second.
+        """
         if self.idle_callback:
+            now = monotonic()
+            if now - self._last_idle_reset < 10:
+                return
+            self._last_idle_reset = now
             asyncio.create_task(self.idle_callback())
 
     async def _process_task_queue(self):
@@ -283,12 +292,31 @@ class OpenStoreInterface(ServiceInterface):
             return False
 
         # Ensure Lomiri support is present
+        # Lomiri dependency is missing, apt covers 0-50% and the click
+        # download the remaining 50-100%
+        # when it is already present, the download uses 0-100%
         if not is_debian_package_installed("furios-lomiri-app-support"):
             self._emit_install_status(package_id, "installing_dependencies")
-            await update_debian_cache()
-            await install_debian_package("furios-lomiri-app-support")
+            self._emit_download_progress(package_id, 0)
+            await update_debian_cache(
+                progress_callback=lambda p: self._emit_download_progress(
+                    package_id, p // 4
+                )
+            )
+            await install_debian_package(
+                "furios-lomiri-app-support",
+                progress_callback=lambda p: self._emit_download_progress(
+                    package_id, 25 + p // 4
+                ),
+            )
+            def download_progress(p):
+                return self._emit_download_progress(
+                            package_id, 50 + p // 2
+                        )
         else:
             logger.info("Lomiri app support is already installed; skipping")
+            def download_progress(p):
+                return self._emit_download_progress(package_id, p)
 
         # Download and unpack the click package
         with tempfile.TemporaryDirectory() as temp_download_dir:
@@ -299,7 +327,7 @@ class OpenStoreInterface(ServiceInterface):
                 package_id,
                 version,
                 temp_download_dir,
-                progress_callback=lambda p: self._emit_download_progress(package_id, p),
+                progress_callback=download_progress,
             )
             if not click_path:
                 logger.error(f"Failed to download {package_id}")
@@ -381,6 +409,9 @@ class OpenStoreInterface(ServiceInterface):
         self.emit_properties_changed(
             {"DownloadProgress": self.props["DownloadProgress"].value}, []
         )
+        # Long installs emit progress without any incoming D-Bus calls;
+        # keep the idle shutdown from killing the service mid-install
+        self._reset_idle_timer()
 
     def _emit_install_status(self, package_id: str, status: str):
         """Emit InstallStatusChanged signal and update InstallStatus property."""
@@ -395,6 +426,7 @@ class OpenStoreInterface(ServiceInterface):
         self.emit_properties_changed(
             {"InstallStatus": self.props["InstallStatus"].value}, []
         )
+        self._reset_idle_timer()
 
     @dbus_property(access=PropertyAccess.READ)
     def DownloadProgress(self) -> "a{sv}":
