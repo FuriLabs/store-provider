@@ -283,12 +283,31 @@ class OpenStoreInterface(ServiceInterface):
             return False
 
         # Ensure Lomiri support is present
+        # Lomiri dependency is missing, apt covers 0-50% and the click
+        # download the remaining 50-100%
+        # when it is already present, the download uses 0-100%
         if not is_debian_package_installed("furios-lomiri-app-support"):
             self._emit_install_status(package_id, "installing_dependencies")
-            await update_debian_cache()
-            await install_debian_package("furios-lomiri-app-support")
+            self._emit_download_progress(package_id, 0)
+            await update_debian_cache(
+                progress_callback=lambda p: self._emit_download_progress(
+                    package_id, p // 4
+                )
+            )
+            await install_debian_package(
+                "furios-lomiri-app-support",
+                progress_callback=lambda p: self._emit_download_progress(
+                    package_id, 25 + p // 4
+                ),
+            )
+            def download_progress(p):
+                return self._emit_download_progress(
+                            package_id, 50 + p // 2
+                        )
         else:
             logger.info("Lomiri app support is already installed; skipping")
+            def download_progress(p):
+                return self._emit_download_progress(package_id, p)
 
         # Download and unpack the click package
         with tempfile.TemporaryDirectory() as temp_download_dir:
@@ -299,7 +318,7 @@ class OpenStoreInterface(ServiceInterface):
                 package_id,
                 version,
                 temp_download_dir,
-                progress_callback=lambda p: self._emit_download_progress(package_id, p),
+                progress_callback=download_progress,
             )
             if not click_path:
                 logger.error(f"Failed to download {package_id}")
