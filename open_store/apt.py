@@ -187,7 +187,7 @@ async def install_debian_package(package_name, progress_callback=None):
         await transaction_interface.call_run()
 
         try:
-            exit_state = await asyncio.wait_for(finished_future, timeout=300)
+            exit_state = await asyncio.wait_for(finished_future, timeout=600)
             if exit_state.value != "exit-success":
                 logger.error(f"Transaction failed with exit state: {exit_state.value}")
                 ret = False
@@ -196,7 +196,7 @@ async def install_debian_package(package_name, progress_callback=None):
                     f"Transaction completed successfully with exit state: {exit_state.value}"
                 )
         except asyncio.TimeoutError:
-            logger.error("Transaction timed out after 5 minutes")
+            logger.error("Transaction timed out after 10 minutes")
             try:
                 await transaction_interface.call_cancel()
                 logger.error("Transaction cancelled")
