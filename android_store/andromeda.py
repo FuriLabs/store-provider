@@ -123,13 +123,25 @@ async def compare_installed_with_repo(db, json_decoder):
         current_version = app["versionName"].value
 
         async with db.execute(
-            "SELECT repository, package, package_id, repository_url FROM apps WHERE package_id = ?",
+            """SELECT repository, package, package_id, repository_url,
+                      summary, description, license, author, web_url
+               FROM apps WHERE package_id = ?""",
             (package_name,),
         ) as cursor:
             rows = await cursor.fetchall()
 
         for row in rows:
-            _repository, package_json, _package_id, repository_url = row
+            (
+                _repository,
+                package_json,
+                _package_id,
+                repository_url,
+                summary,
+                description,
+                license,
+                author,
+                web_url,
+            ) = row
             if not package_json:
                 continue
 
@@ -144,6 +156,11 @@ async def compare_installed_with_repo(db, json_decoder):
                     "current_version": current_version,
                     "available_version": repo_version,
                     "name": app["name"].value,
+                    "summary": summary or "",
+                    "description": description or "",
+                    "license": license or "",
+                    "author": author or "",
+                    "web_url": web_url or "",
                 }
                 upgradable.append(upgradable_info)
                 break

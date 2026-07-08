@@ -15,7 +15,7 @@ from dbus_fast.constants import PropertyAccess
 from dbus_fast.service import ServiceInterface, dbus_property, method, signal
 from loguru import logger
 
-from common.utils import download_file
+from common.utils import cache_icon, download_file
 from open_store.api import fetch_app_list, get_app_details
 from open_store.apt import (
     install_debian_package,
@@ -30,6 +30,7 @@ from open_store.click import (
     process_desktop_files,
 )
 from open_store.database import (
+    get_app_metadata,
     get_installed_app,
     get_installed_apps,
     init_app_database,
@@ -43,6 +44,7 @@ from open_store.database import (
 DATABASE = os.path.expanduser("~/.cache/store-provider/open-store/open-store.db")
 CACHE_DIR = os.path.expanduser("~/.cache/store-provider/open-store/repo")
 DOWNLOAD_DIR = os.path.expanduser("~/.cache/store-provider/open-store/downloads")
+ICON_CACHE_DIR = os.path.expanduser("~/.cache/store-provider/open-store/icons")
 INSTALLED_DB = os.path.expanduser("~/.local/store-provider/open-store/apps.db")
 APPS_DIR = os.path.expanduser("~/.local/store-provider/open-store")
 OPENSTORE_API_URL = "https://open-store.io/api/v4/apps"
@@ -223,6 +225,20 @@ class OpenStoreInterface(ServiceInterface):
                 await self.fetch_all_apps()
 
             results = await search_apps(self.db, query)
+
+            await self.ensure_session()
+            icon_paths = await asyncio.gather(
+                *(
+                    cache_icon(
+                        self.session,
+                        (result.get("package") or {}).get("icon_url", ""),
+                        ICON_CACHE_DIR,
+                    )
+                    for result in results
+                )
+            )
+            for result, icon_path in zip(results, icon_paths):
+                result["icon_path"] = icon_path
 
             return json.dumps(results)
 
@@ -508,7 +524,25 @@ class OpenStoreInterface(ServiceInterface):
                             "s", latest_download.get("download_url", "")
                         ),
                         "channel": Variant("s", latest_download.get("channel", "")),
+                        "summary": Variant("s", app_details.get("tagline", "") or ""),
+                        "description": Variant(
+                            "s", app_details.get("description", "") or ""
+                        ),
+                        "license": Variant("s", app_details.get("license", "") or ""),
+                        "author": Variant("s", app_details.get("author", "") or ""),
+                        "icon_url": Variant("s", app_details.get("icon", "") or ""),
+                        "icon_path": Variant(
+                            "s",
+                            await cache_icon(
+                                self.session,
+                                app_details.get("icon", "") or "",
+                                ICON_CACHE_DIR,
+                            ),
+                        ),
                     }
+                    filesize = latest_download.get("filesize")
+                    if isinstance(filesize, int) and filesize > 0:
+                        app_info["size"] = Variant("t", filesize)
                     upgradable.append(app_info)
                     logger.info(
                         f"Upgradable: {app_id} from {current_version} to {latest_version}"
@@ -532,35 +566,53 @@ class OpenStoreInterface(ServiceInterface):
 
         return await _get_upgradable_task()
 
+    async def _upgrade_package_list(self, upgrade_list):
+        logger.info(f"Upgrading packages: {', '.join(upgrade_list)}")
+        success = True
+
+        for package_id in upgrade_list:
+            if not await self.install_package(package_id):
+                logger.error(f"Failed to upgrade {package_id}")
+                success = False
+        return success
+
     @method()
     async def UpgradePackages(self, packages: "as") -> "b":
         async def _upgrade_packages_task():
             logger.info(f"Upgrading packages {packages}")
 
-            upgrade_list = packages
-            if not upgrade_list:
-                try:
-                    installed_apps = await get_installed_apps(self.installed_db)
-                    upgradable_apps = await self.get_upgradable_apps(installed_apps)
-                    upgrade_list = [app["id"].value for app in upgradable_apps]
-                except Exception as e:
-                    logger.error(f"Error getting upgradable apps: {e}")
-                    return False
+            # An empty list is a no-op, not "upgrade everything": callers
+            # like the gnome-software plugins pass through whatever subset
+            # of an update job belongs to us, which may be nothing. Use
+            # UpgradeAll to upgrade everything explicitly.
+            if not packages:
+                logger.info("No packages requested, nothing to upgrade")
+                return True
+
+            return await self._upgrade_package_list(packages)
+
+        return await self._queue_task(_upgrade_packages_task)
+
+    @method()
+    async def UpgradeAll(self) -> "b":
+        async def _upgrade_all_task():
+            logger.info("Upgrading all available packages")
+
+            try:
+                installed_apps = await get_installed_apps(self.installed_db)
+                upgradable_apps = await self.get_upgradable_apps(installed_apps)
+                upgrade_list = [app["id"].value for app in upgradable_apps]
+            except Exception as e:
+                logger.error(f"Error getting upgradable apps: {e}")
+                return False
 
             if not upgrade_list:
                 logger.info("No packages to upgrade")
                 return True
 
-            logger.info(f"Upgrading packages: {', '.join(upgrade_list)}")
-            success = True
+            return await self._upgrade_package_list(upgrade_list)
 
-            for package_id in upgrade_list:
-                if not await self.install_package(package_id):
-                    logger.error(f"Failed to upgrade {package_id}")
-                    success = False
-            return success
-
-        return await self._queue_task(_upgrade_packages_task)
+        return await self._queue_task(_upgrade_all_task)
 
     @method()
     async def GetInstalledApps(self) -> "aa{sv}":
@@ -570,6 +622,7 @@ class OpenStoreInterface(ServiceInterface):
 
             try:
                 installed_apps = await get_installed_apps(self.installed_db)
+                await self.ensure_session()
                 for app in installed_apps:
                     app_info = {
                         "id": Variant("s", app["id"]),
@@ -581,6 +634,24 @@ class OpenStoreInterface(ServiceInterface):
                         "installDate": Variant("d", float(app["install_date"])),
                         "state": Variant("s", "installed"),
                     }
+
+                    # Enrich with cached OpenStore metadata when available
+                    metadata = await get_app_metadata(self.db, app["id"])
+                    if metadata is not None:
+                        icon_path = await cache_icon(
+                            self.session, metadata["icon_url"], ICON_CACHE_DIR
+                        )
+                        app_info.update(
+                            {
+                                "summary": Variant("s", metadata["summary"]),
+                                "description": Variant("s", metadata["description"]),
+                                "license": Variant("s", metadata["license"]),
+                                "author": Variant("s", metadata["author"]),
+                                "icon_url": Variant("s", metadata["icon_url"]),
+                                "icon_path": Variant("s", icon_path),
+                            }
+                        )
+
                     result.append(app_info)
 
                 return result

@@ -192,6 +192,31 @@ async def search_apps(db, query):
         return []
 
 
+async def get_app_metadata(db, app_id):
+    """Get display metadata (summary, icon, etc.) for an app by ID"""
+    try:
+        async with db.execute(
+            "SELECT tagline, description, license, author, icon FROM apps WHERE id = ?",
+            (app_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+
+        if row is None:
+            return None
+
+        tagline, description, license, author, icon = row
+        return {
+            "summary": tagline or "",
+            "description": description or "",
+            "license": license or "",
+            "author": author or "",
+            "icon_url": icon or "",
+        }
+    except Exception as e:
+        logger.error(f"Error getting app metadata: {e}")
+        return None
+
+
 async def save_installed_app(
     db, app_id, name, version, channel, architecture, install_date, app_dir
 ):

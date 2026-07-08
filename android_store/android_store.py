@@ -29,12 +29,13 @@ from android_store.api import (
 )
 from android_store.database import (
     ensure_populated,
+    get_app_metadata,
     get_package_by_id,
     init_database,
     save_packages_to_db,
     search_packages,
 )
-from common.utils import download_file
+from common.utils import cache_icon, download_file
 
 DEFAULT_REPO_CONFIG_DIR = "/usr/lib/store-provider/android_store/repos"
 CUSTOM_REPO_CONFIG_DIR = "/etc/store-provider/android-store/repos"
@@ -43,6 +44,7 @@ CACHE_DIR = os.path.expanduser("~/.cache/store-provider/android-store/repo")
 DOWNLOAD_CACHE_DIR = os.path.expanduser(
     "~/.cache/store-provider/android-store/downloads"
 )
+ICON_CACHE_DIR = os.path.expanduser("~/.cache/store-provider/android-store/icons")
 
 
 class FDroidInterface(ServiceInterface):
@@ -250,6 +252,21 @@ class FDroidInterface(ServiceInterface):
                 return json.dumps(results)
 
             results = await search_packages(self.db, query, msgspec.json.decode)
+
+            await self.ensure_session()
+            icon_paths = await asyncio.gather(
+                *(
+                    cache_icon(
+                        self.session,
+                        (result.get("package") or {}).get("icon_url", ""),
+                        ICON_CACHE_DIR,
+                    )
+                    for result in results
+                )
+            )
+            for result, icon_path in zip(results, icon_paths):
+                result["icon_path"] = icon_path
+
             return json.dumps(results)
 
         return await _search_task()
@@ -435,7 +452,20 @@ class FDroidInterface(ServiceInterface):
                 return upgradable
 
             raw_upgradable = await self.get_upgradable_packages()
-            for pkg in raw_upgradable:
+
+            await self.ensure_session()
+            icon_paths = await asyncio.gather(
+                *(
+                    cache_icon(
+                        self.session,
+                        pkg["packageInfo"].get("icon_url", ""),
+                        ICON_CACHE_DIR,
+                    )
+                    for pkg in raw_upgradable
+                )
+            )
+
+            for pkg, icon_path in zip(raw_upgradable, icon_paths):
                 upgradable_info = {
                     "id": Variant("s", pkg["id"]),
                     "name": Variant("s", pkg.get("name", pkg["id"])),
@@ -444,7 +474,19 @@ class FDroidInterface(ServiceInterface):
                     "availableVersion": Variant("s", pkg["available_version"]),
                     "repository": Variant("s", pkg["repo_url"]),
                     "package": Variant("s", json.dumps(pkg["packageInfo"])),
+                    "summary": Variant("s", pkg.get("summary", "")),
+                    "description": Variant("s", pkg.get("description", "")),
+                    "license": Variant("s", pkg.get("license", "")),
+                    "author": Variant("s", pkg.get("author", "")),
+                    "web_url": Variant("s", pkg.get("web_url", "")),
+                    "icon_url": Variant(
+                        "s", pkg["packageInfo"].get("icon_url", "")
+                    ),
+                    "icon_path": Variant("s", icon_path),
                 }
+                size = pkg["packageInfo"].get("size")
+                if isinstance(size, int) and size > 0:
+                    upgradable_info["size"] = Variant("t", size)
                 upgradable.append(upgradable_info)
                 logger.info(
                     f"{upgradable_info['packageName'].value} {upgradable_info['name'].value} {upgradable_info['currentVersion'].value} {upgradable_info['availableVersion'].value}"
@@ -453,68 +495,89 @@ class FDroidInterface(ServiceInterface):
 
         return await _get_upgradable_task()
 
+    async def _upgrade_package_list(self, upgrade_list, upgradables):
+        os.makedirs(DOWNLOAD_CACHE_DIR, exist_ok=True)
+        await self.ensure_session()
+
+        for package_id in upgrade_list:
+            for pkg in upgradables:
+                if pkg["id"] == package_id:
+                    logger.info(f"Installing upgrade for {package_id}")
+                    try:
+                        package_info = pkg["packageInfo"]
+                        download_url = package_info["download_url"]
+                        apk_name = package_info["apk_name"]
+                        filepath = os.path.join(DOWNLOAD_CACHE_DIR, apk_name)
+
+                        self._emit_install_status(package_id, "downloading")
+                        result = await download_file(
+                            self.session,
+                            download_url,
+                            filepath,
+                            progress_callback=lambda p: (
+                                self._emit_download_progress(package_id, p)
+                            ),
+                        )
+                        if not result:
+                            logger.error(f"Failed to download {package_id}")
+                            continue
+
+                        logger.info(f"APK downloaded to: {filepath}")
+                        self._emit_install_status(package_id, "installing")
+                        success = await install_app(filepath)
+                        os.remove(filepath)
+
+                        if not success:
+                            logger.error(f"Failed to upgrade {package_id}")
+                            return False
+
+                        break
+                    except Exception as e:
+                        logger.error(f"Error upgrading {package_id}: {e}")
+                        return False
+        await self.cleanup_session()
+        return True
+
     @method()
     async def UpgradePackages(self, packages: "as") -> "b":
         async def _upgrade_packages_task():
             logger.info(f"Upgrading packages {packages}")
 
+            # An empty list is a no-op, not "upgrade everything": callers
+            # like the gnome-software plugins pass through whatever subset
+            # of an update job belongs to us, which may be nothing. Use
+            # UpgradeAll to upgrade everything explicitly.
+            if not packages:
+                logger.info("No packages requested, nothing to upgrade")
+                return True
+
             if not await ping_session_manager():
                 return False
 
             upgradables = await self.get_upgradable_packages()
-            upgrade_list = packages
+            return await self._upgrade_package_list(packages, upgradables)
 
-            if not upgrade_list:
-                upgrade_list = [pkg["id"] for pkg in upgradables]
-                logger.info(f"Upgrading all available packages: {upgrade_list}")
+        return await self._queue_task(_upgrade_packages_task)
+
+    @method()
+    async def UpgradeAll(self) -> "b":
+        async def _upgrade_all_task():
+            logger.info("Upgrading all available packages")
+
+            if not await ping_session_manager():
+                return False
+
+            upgradables = await self.get_upgradable_packages()
+            upgrade_list = [pkg["id"] for pkg in upgradables]
 
             if not upgrade_list:
                 logger.info("No packages to upgrade")
                 return True
 
-            os.makedirs(DOWNLOAD_CACHE_DIR, exist_ok=True)
-            await self.ensure_session()
+            logger.info(f"Upgrading all available packages: {upgrade_list}")
+            return await self._upgrade_package_list(upgrade_list, upgradables)
 
-            for package_id in upgrade_list:
-                for pkg in upgradables:
-                    if pkg["id"] == package_id:
-                        logger.info(f"Installing upgrade for {package_id}")
-                        try:
-                            package_info = pkg["packageInfo"]
-                            download_url = package_info["download_url"]
-                            apk_name = package_info["apk_name"]
-                            filepath = os.path.join(DOWNLOAD_CACHE_DIR, apk_name)
-
-                            self._emit_install_status(package_id, "downloading")
-                            result = await download_file(
-                                self.session,
-                                download_url,
-                                filepath,
-                                progress_callback=lambda p: (
-                                    self._emit_download_progress(package_id, p)
-                                ),
-                            )
-                            if not result:
-                                logger.error(f"Failed to download {package_id}")
-                                continue
-
-                            logger.info(f"APK downloaded to: {filepath}")
-                            self._emit_install_status(package_id, "installing")
-                            success = await install_app(filepath)
-                            os.remove(filepath)
-
-                            if not success:
-                                logger.error(f"Failed to upgrade {package_id}")
-                                return False
-
-                            break
-                        except Exception as e:
-                            logger.error(f"Error upgrading {package_id}: {e}")
-                            return False
-            await self.cleanup_session()
-            return True
-
-        return await self._queue_task(_upgrade_packages_task)
+        return await self._queue_task(_upgrade_all_task)
 
     @method()
     async def RemoveRepository(self, repo_id: "s") -> "b":
@@ -534,7 +597,30 @@ class FDroidInterface(ServiceInterface):
 
             if not await ping_session_manager():
                 return []
-            return await get_apps_info()
+
+            apps = await get_apps_info()
+
+            # Enrich with repo metadata; sideloaded apps stay as-is
+            await self.ensure_session()
+            for app in apps:
+                metadata = await get_app_metadata(
+                    self.db, app["packageName"].value, msgspec.json.decode
+                )
+                if metadata is None:
+                    continue
+
+                icon_path = await cache_icon(
+                    self.session, metadata["icon_url"], ICON_CACHE_DIR
+                )
+                app["summary"] = Variant("s", metadata["summary"])
+                app["description"] = Variant("s", metadata["description"])
+                app["license"] = Variant("s", metadata["license"])
+                app["author"] = Variant("s", metadata["author"])
+                app["web_url"] = Variant("s", metadata["web_url"])
+                app["icon_url"] = Variant("s", metadata["icon_url"])
+                app["icon_path"] = Variant("s", icon_path)
+
+            return apps
 
         return await _get_installed_apps_task()
 

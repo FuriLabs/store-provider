@@ -155,6 +155,34 @@ async def search_packages(db, query, json_decoder):
         return []
 
 
+async def get_app_metadata(db, package_id, json_decoder):
+    """Get display metadata (summary, icon, etc.) for a package by ID"""
+    try:
+        async with db.execute(
+            """SELECT summary, description, license, author, web_url, package
+               FROM apps WHERE package_id = ?""",
+            (package_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+
+        if row is None:
+            return None
+
+        summary, description, license, author, web_url, package_json = row
+        package_info = json_decoder(package_json) if package_json else {}
+        return {
+            "summary": summary or "",
+            "description": description or "",
+            "license": license or "",
+            "author": author or "",
+            "web_url": web_url or "",
+            "icon_url": package_info.get("icon_url", ""),
+        }
+    except Exception as e:
+        logger.error(f"Error getting app metadata: {e}")
+        return None
+
+
 async def get_package_by_id(db, package_id, json_decoder):
     """Get package details by ID"""
     try:
