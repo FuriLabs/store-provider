@@ -532,35 +532,53 @@ class OpenStoreInterface(ServiceInterface):
 
         return await _get_upgradable_task()
 
+    async def _upgrade_package_list(self, upgrade_list):
+        logger.info(f"Upgrading packages: {', '.join(upgrade_list)}")
+        success = True
+
+        for package_id in upgrade_list:
+            if not await self.install_package(package_id):
+                logger.error(f"Failed to upgrade {package_id}")
+                success = False
+        return success
+
     @method()
     async def UpgradePackages(self, packages: "as") -> "b":
         async def _upgrade_packages_task():
             logger.info(f"Upgrading packages {packages}")
 
-            upgrade_list = packages
-            if not upgrade_list:
-                try:
-                    installed_apps = await get_installed_apps(self.installed_db)
-                    upgradable_apps = await self.get_upgradable_apps(installed_apps)
-                    upgrade_list = [app["id"].value for app in upgradable_apps]
-                except Exception as e:
-                    logger.error(f"Error getting upgradable apps: {e}")
-                    return False
+            # An empty list is a no-op, not "upgrade everything": callers
+            # like the gnome-software plugins pass through whatever subset
+            # of an update job belongs to us, which may be nothing. Use
+            # UpgradeAll to upgrade everything explicitly.
+            if not packages:
+                logger.info("No packages requested, nothing to upgrade")
+                return True
+
+            return await self._upgrade_package_list(packages)
+
+        return await self._queue_task(_upgrade_packages_task)
+
+    @method()
+    async def UpgradeAll(self) -> "b":
+        async def _upgrade_all_task():
+            logger.info("Upgrading all available packages")
+
+            try:
+                installed_apps = await get_installed_apps(self.installed_db)
+                upgradable_apps = await self.get_upgradable_apps(installed_apps)
+                upgrade_list = [app["id"].value for app in upgradable_apps]
+            except Exception as e:
+                logger.error(f"Error getting upgradable apps: {e}")
+                return False
 
             if not upgrade_list:
                 logger.info("No packages to upgrade")
                 return True
 
-            logger.info(f"Upgrading packages: {', '.join(upgrade_list)}")
-            success = True
+            return await self._upgrade_package_list(upgrade_list)
 
-            for package_id in upgrade_list:
-                if not await self.install_package(package_id):
-                    logger.error(f"Failed to upgrade {package_id}")
-                    success = False
-            return success
-
-        return await self._queue_task(_upgrade_packages_task)
+        return await self._queue_task(_upgrade_all_task)
 
     @method()
     async def GetInstalledApps(self) -> "aa{sv}":
